@@ -13,24 +13,23 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "//": "Shared libs are peerDependencies, not deps: this package is consumed as SOURCE via transpilePackages, and both host apps already ship these. Declaring them as deps pins ranges that don't match the apps' installed majors (framer-motion 12, @dnd-kit/modifiers 9, ...) and npm then nests a second copy into the bundle. Peers let each app provide its single copy.",
   "peerDependencies": {
+    "@cobuntu/management-ui-shared": "*",
+    "@cobuntu/product-management-ui": "*",
+    "@dnd-kit/core": ">=6",
+    "@dnd-kit/modifiers": ">=7",
+    "@dnd-kit/sortable": ">=8",
+    "@dnd-kit/utilities": ">=3",
+    "clsx": ">=2",
+    "framer-motion": ">=11",
+    "lucide-react": ">=0.3",
     "next": ">=14",
     "next-intl": ">=3",
     "react": ">=18",
-    "react-dom": ">=18"
-  },
-  "dependencies": {
-    "@cobuntu/management-ui-shared": "github:cobuntuHello/cobuntu-management-ui-shared",
-    "@cobuntu/product-management-ui": "github:cobuntuHello/cobuntu-product-management-ui",
-    "@dnd-kit/core": "^6.1.0",
-    "@dnd-kit/modifiers": "^7.0.0",
-    "@dnd-kit/sortable": "^8.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
-    "clsx": "^2.1.1",
-    "framer-motion": "^11.0.0",
-    "lucide-react": "^0.400.0",
-    "sanitize-html": "^2.13.0",
-    "tailwind-merge": "^2.5.0"
+    "react-dom": ">=18",
+    "sanitize-html": ">=2",
+    "tailwind-merge": ">=2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.0",
