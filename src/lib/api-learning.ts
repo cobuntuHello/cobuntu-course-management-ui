@@ -107,17 +107,6 @@ export interface CourseSection {
   lessons: CourseLesson[];
 }
 
-/**
- * Courses on this community's Learning shelf.
- *
- * No `?type=` is sent, and none would help: the endpoint pins the type to
- * COURSE server-side and ignores the query parameter. That is deliberate over
- * there — forwarding a caller's type would have served the entire marketplace
- * from /courses.
- *
- * `no-store` for the same reason getProducts and getEvents use it: a seller
- * publishes a course and expects to see it, not the previous render.
-
 export function getCourseContentClient(
   tag: string,
   productId: string,
