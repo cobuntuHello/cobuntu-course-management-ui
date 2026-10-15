@@ -208,6 +208,63 @@ describe("the video", () => {
     expect(uploadCourseFile.mock.calls[0][2]).toMatchObject({ kind: "VIDEO" });
   });
 
+  /*
+   * REPORTED: "fiz o replace mas o video anterior continua e nao e o video que
+   * adicionei". Neither route replaces anything by itself - both write a NEW
+   * media row on the lesson - and the sheet and the row read
+   * media.find(kind === "VIDEO"), the FIRST one, so what stayed on screen was
+   * the video that had just been replaced.
+   */
+  it("drops the old video once the new file is stored", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Replace/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "new.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
+    });
+    await waitFor(() => expect(deleteLessonMedia).toHaveBeenCalledWith("m-1"));
+  });
+
+  /* The order is load-bearing: deleting first would lose the author's only
+     copy if the upload then failed, and the upload is the slowest thing on
+     the page with a bucket at the far end. */
+  it("keeps the old video when the upload fails", async () => {
+    uploadCourseFile.mockRejectedValueOnce(new Error("bucket said no"));
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Replace/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "new.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
+    });
+    await screen.findByText("bucket said no");
+    expect(deleteLessonMedia).not.toHaveBeenCalled();
+  });
+
+  it("drops the old video when the replacement is a link", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = within(await screen.findByRole("dialog", { name: /Replace/ }));
+    fireEvent.change(picker.getByLabelText("Paste a YouTube link"), {
+      target: { value: "https://youtube.com/watch?v=abc" },
+    });
+    fireEvent.click(picker.getByRole("button", { name: /^Replace$/ }));
+    await waitFor(() => expect(deleteLessonMedia).toHaveBeenCalledWith("m-1"));
+  });
+
+  it("deletes nothing when the lesson had no video to begin with", async () => {
+    const sheet = await openLesson(lesson({ media: [] }));
+    fireEvent.click(sheet.getByRole("button", { name: /^Add video$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Add video/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "first.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
+    });
+    await waitFor(() => expect(uploadCourseFile).toHaveBeenCalled());
+    expect(deleteLessonMedia).not.toHaveBeenCalled();
+  });
+
   it("links a URL to THIS lesson instead of making a new one", async () => {
     const sheet = await openLesson();
     fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));

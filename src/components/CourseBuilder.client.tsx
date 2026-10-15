@@ -1326,7 +1326,25 @@ function LessonRow({
    * "add file" and the control that should have said "add video" were the same
    * control, and what you got depended on what you happened to pick.
    */
-  const onFile = async (file: File, kind: "VIDEO" | "ATTACHMENT") => {
+  const onFile = async (
+    file: File,
+    kind: "VIDEO" | "ATTACHMENT",
+    /**
+     * The media this upload REPLACES, dropped once the new one is stored.
+     *
+     * Neither route replaces anything on its own: `uploadCourseFile` and
+     * `linkLessonVideo` both write a NEW row on the lesson. So "Replace" left
+     * the old video sitting there, and since the sheet and the row both read
+     * `media.find(kind === "VIDEO")` - the FIRST one - what they went on
+     * showing was the video that had just been replaced.
+     *
+     * Deleted AFTER the upload rather than before it. The other order loses
+     * the author's only copy if the new upload then fails, and an upload is
+     * exactly where failure is likely: it is the slowest thing on this page
+     * and the one with a bucket at the far end.
+     */
+    replaces?: string | null,
+  ) => {
     setUploadError(null);
     setUploadPercent(0);
     await run(async () => {
@@ -1350,6 +1368,13 @@ function LessonRow({
         /* The BODY only. The notice's own title already says "heavier than most
            courses need", and the sentence this used to hold said it again. */
         setUploadWarning(heavy ? t("noticeHeavyBodyOne", { mbps: Math.round(heavy.mbps) }) : null);
+        /* Only now, and only if it is not the row we just wrote. Swallowed
+           because a failure here leaves two videos, which is untidy, while
+           surfacing it over a successful upload would read as the upload
+           having failed. */
+        if (replaces && replaces !== media.id) {
+          try { await deleteLessonMedia(replaces); } catch { /* already gone */ }
+        }
         await onChanged();
       } catch (err) {
         if (err instanceof UploadCancelled) return;
@@ -2171,9 +2196,18 @@ function LessonRow({
               open={videoPicker}
               onClose={() => setVideoPicker(false)}
               target={{ lessonId: lesson.id }}
-              onFiles={(files) => { if (files[0]) void onFile(files[0], "VIDEO"); }}
+              onFiles={(files) => { if (files[0]) void onFile(files[0], "VIDEO", video?.id ?? null); }}
               onRejected={(names) => setUploadError(names.join(", "))}
-              onAdded={onChanged}
+              onAdded={async () => {
+                /* The link route writes a new row too - "the same row an
+                   upload would have" - so the replaced one has to go the same
+                   way. `video` is still the OLD one here: nothing has
+                   refreshed between the link landing and this callback. */
+                if (video) {
+                  try { await deleteLessonMedia(video.id); } catch { /* already gone */ }
+                }
+                await onChanged();
+              }}
               title={video ? t("replaceVideo") : t("addVideo")}
               confirmLabel={video ? t("replaceVideo") : t("addVideo")}
             />
