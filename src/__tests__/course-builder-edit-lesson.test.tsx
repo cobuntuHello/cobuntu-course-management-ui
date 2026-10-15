@@ -150,13 +150,55 @@ describe("the video", () => {
     await waitFor(() => expect(deleteLessonMedia).toHaveBeenCalledWith("m-1"));
   });
 
-  it("is replaced as a VIDEO, not as an attachment", async () => {
+  /*
+   * Replace opens a DIALOG now, not the operating system's file picker, and
+   * that dialog asks the whole question: a file, or a link. It used to go
+   * straight to the picker, so the prominent button silently answered "a
+   * file" and the link half was a small text button further down the sheet.
+   */
+  it("asks where the new video comes from, rather than going straight to the picker", async () => {
     const sheet = await openLesson();
-    fireEvent.click(sheet.getByRole("button", { name: /Replace/ }));
-    fireEvent.change(fileInput("video"), { target: { files: [new File(["x"], "new.mp4", { type: "video/mp4" })] } });
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = within(await screen.findByRole("dialog", { name: /Replace/ }));
+    expect(picker.getByText("Upload a video file")).toBeTruthy();
+    expect(picker.getByLabelText("Paste a YouTube link")).toBeTruthy();
+    /* Not the add-a-lesson copy: nothing here is adding a lesson. Scoped to
+       the picker, because the MODULE's own "Add a video lesson" card is on
+       the page behind it and a bare query finds that instead. */
+    expect(picker.queryByText("Add a video lesson")).toBeNull();
+    expect(picker.queryByRole("button", { name: "Add this lesson" })).toBeNull();
+  });
+
+  it("uploads a dropped file as a VIDEO", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Replace/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    const file = new File(["x"], "new.mp4", { type: "video/mp4" });
+    fireEvent.drop(zone, { dataTransfer: { files: [file], items: [], types: ["Files"] } });
     await waitFor(() => expect(uploadCourseFile).toHaveBeenCalled());
+    expect(uploadCourseFile.mock.calls[0][0]).toMatchObject({ lessonId: "lesson-1" });
     expect(uploadCourseFile.mock.calls[0][2]).toMatchObject({ kind: "VIDEO" });
   });
+
+  it("links a URL to THIS lesson instead of making a new one", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = within(await screen.findByRole("dialog", { name: /Replace/ }));
+    fireEvent.change(picker.getByLabelText("Paste a YouTube link"), {
+      target: { value: "https://youtube.com/watch?v=abc" },
+    });
+    fireEvent.click(picker.getByRole("button", { name: /^Replace$/ }));
+    await waitFor(() => expect(linkLessonVideo).toHaveBeenCalled());
+    expect(linkLessonVideo.mock.calls[0][0]).toMatchObject({ lessonId: "lesson-1" });
+  });
+
+  it("is headed 'Add video' on a lesson that has none yet", async () => {
+    const sheet = await openLesson(lesson({ media: [] }));
+    fireEvent.click(sheet.getByRole("button", { name: /^Add video$/ }));
+    expect(await screen.findByRole("dialog", { name: /Add video/ })).toBeTruthy();
+  });
+
 });
 
 describe("adding a file", () => {

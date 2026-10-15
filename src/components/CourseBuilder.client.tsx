@@ -629,9 +629,21 @@ export function AddVideoLessonModal({
     onAdded,
     onFiles,
     onRejected,
+    title,
+    confirmLabel,
 }: {
     open: boolean;
     onClose: () => void;
+    /**
+     * Override the heading and the confirm button.
+     *
+     * Passed by the lesson sheet, where this dialog is REPLACING one video
+     * rather than adding a lesson: headed "Add a video lesson" with a confirm
+     * reading "Add this lesson", it would describe an action that is not the
+     * one about to happen. Left out, the add-a-lesson copy stands.
+     */
+    title?: string;
+    confirmLabel?: string;
     /** A section, a lesson, or a way to make the section that does not exist yet. */
     target: UploadTarget | (() => Promise<UploadTarget>);
     onAdded: () => Promise<void>;
@@ -698,7 +710,7 @@ export function AddVideoLessonModal({
             open={open}
             onClose={onClose}
             busy={busy}
-            title={both ? t("addVideoTitle") : t("linkVideoLabel")}
+            title={title ?? (both ? t("addVideoTitle") : t("linkVideoLabel"))}
             subtitle={both ? t("addVideoSubtitle") : t("linkVideoExplainer")}
             closeLabel={t("close")}
             footer={
@@ -706,7 +718,7 @@ export function AddVideoLessonModal({
                     onCancel={onClose}
                     onConfirm={() => void submit()}
                     cancelLabel={t("close")}
-                    confirmLabel={busy ? t("linkVideoBusy") : t("linkVideoConfirm")}
+                    confirmLabel={busy ? t("linkVideoBusy") : (confirmLabel ?? t("linkVideoConfirm"))}
                     confirmDisabled={!url.trim()}
                     busy={busy}
                 />
@@ -1263,13 +1275,26 @@ function LessonRow({
   const tq = useTranslations("learning.quiz");
   const { busy, run } = useBusy();
   const fileRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLInputElement>(null);
   const captionRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   /* 0-100 while a file moves, null when nothing is moving. An 86MB upload
      behind a bare spinner is indistinguishable from a hung page. */
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  /*
+   * "Replace" (or "Add video") opens a DIALOG now, not the operating system's
+   * file picker.
+   *
+   * Going straight to the picker made the button answer only half the
+   * question. A video can come from a file OR from a link the author already
+   * has online, and the link half lived in a separate control further down the
+   * sheet - so the prominent button silently decided the answer, and the other
+   * way in was a 11.5px text button somebody had to notice.
+   *
+   * The dialog it opens is the one the module's own "Add a video lesson" card
+   * uses, with both halves, pointed at THIS lesson instead of at the section.
+   */
+  const [videoPicker, setVideoPicker] = useState(false);
 
   /**
    * Attach a caption file.
@@ -1988,7 +2013,7 @@ function LessonRow({
             </span>
             <button
               type="button"
-              onClick={() => videoRef.current?.click()}
+              onClick={() => setVideoPicker(true)}
               disabled={busy}
               className="shrink-0 rounded-[var(--button-radius,0.5rem)] bg-zinc-900 px-2.5 py-1.5 text-[11.5px] font-semibold text-white border-none cursor-pointer transition-opacity hover:opacity-85 disabled:opacity-40"
             >
@@ -2074,25 +2099,6 @@ function LessonRow({
           {/* ── The two secondary actions ────────────────────────────── */}
           <div className="mt-2.5 flex items-center gap-1">
             <input
-              ref={videoRef}
-              type="file"
-              /*
-               * The types the SERVER takes. It refuses anything else because
-               * those are what a browser plays without a transcode step, so
-               * filtering here turns a refusal you hit after a 2GB upload into
-               * one you cannot reach.
-               */
-              accept="video/mp4,video/webm,video/quicktime"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                // Cleared so the same file can be chosen twice, which a retry
-                // after a failed upload depends on.
-                e.target.value = "";
-                if (file) void onFile(file, "VIDEO");
-              }}
-            />
-            <input
               ref={fileRef}
               type="file"
               className="hidden"
@@ -2142,6 +2148,34 @@ function LessonRow({
               target={{ lessonId: lesson.id }}
               disabled={busy}
               onLinked={onChanged}
+            />
+
+            {/*
+              * Where the video comes from, asked as ONE question.
+              *
+              * Same dialog the module's "Add a video lesson" card opens - a
+              * drop zone, the word "or", and a field for a link - pointed at
+              * this lesson rather than at the section, so what comes back
+              * replaces this lesson's video instead of making a new lesson.
+              *
+              * Its copy is overridden: unchanged it is headed "Add a video
+              * lesson" and confirms with "Add this lesson", neither of which
+              * is what pressing Replace does.
+              *
+              * Only the first file is taken. The zone accepts a multi-file
+              * drop because the module's version makes one lesson per file;
+              * here there is one lesson and one video in it, so the rest would
+              * have nowhere to go.
+              */}
+            <AddVideoLessonModal
+              open={videoPicker}
+              onClose={() => setVideoPicker(false)}
+              target={{ lessonId: lesson.id }}
+              onFiles={(files) => { if (files[0]) void onFile(files[0], "VIDEO"); }}
+              onRejected={(names) => setUploadError(names.join(", "))}
+              onAdded={onChanged}
+              title={video ? t("replaceVideo") : t("addVideo")}
+              confirmLabel={video ? t("replaceVideo") : t("addVideo")}
             />
           </div>
         </div>

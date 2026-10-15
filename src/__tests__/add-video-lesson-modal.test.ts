@@ -94,7 +94,15 @@ describe("the two sources live in one dialog", () => {
          * already have on YouTube", with no upload anywhere on screen. The
          * heading has to follow the content.
          */
-        expect(builder).toContain('title={both ? t("addVideoTitle") : t("linkVideoLabel")}');
+        /*
+         * The `both` ternary is still the DEFAULT, and that is what this
+         * pins. A caller may now override the heading - the lesson sheet
+         * does, because it is replacing a video rather than adding a lesson -
+         * but an override is a deliberate act at a call site, whereas the
+         * fallback is what every other caller silently gets. If the fallback
+         * stopped following the content, the bug would be back everywhere.
+         */
+        expect(builder).toContain('title={title ?? (both ? t("addVideoTitle") : t("linkVideoLabel"))}');
         expect(builder).toContain('subtitle={both ? t("addVideoSubtitle") : t("linkVideoExplainer")}');
         expect(builder).toContain("const both = !!onFiles;");
     });
