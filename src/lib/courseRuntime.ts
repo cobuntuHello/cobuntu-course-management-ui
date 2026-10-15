@@ -53,3 +53,35 @@ export function runtimeLabel(t: Translate, totalMinutes: number): string {
 export function runtimeLabelFromSeconds(t: Translate, totalSeconds: number): string {
     return runtimeLabel(t, (Number.isFinite(totalSeconds) ? totalSeconds : 0) / 60);
 }
+
+/**
+ * A length in the BUILDER, where it may be short: "45 s", "3 min", "1h 12m".
+ *
+ * ── Why this is not runtimeLabel ───────────────────────────────────────────
+ *
+ * `runtimeLabel` rounds to whole minutes, and the rounding has nowhere to go
+ * below thirty seconds. A 20-second lesson is `Math.round(20 / 60)`, which is
+ * 0, so the builder printed "0 min" next to a video that had just finished
+ * uploading and the author read it as a failed upload. The course's own
+ * Runtime stat did the same thing to a course that was so far one short clip.
+ *
+ * Under a minute the number is therefore printed in SECONDS and not rounded
+ * away. At a minute and over it hands off to `runtimeLabel`, so one lesson and
+ * the course total it contributes to are written the same way.
+ *
+ * ── Why it stays separate ──────────────────────────────────────────────────
+ *
+ * The split is not lesson-versus-total: the builder's Runtime stat uses this
+ * as well. It is BUILDER versus STOREFRONT. `runtimeLabel` is what a course
+ * announces to a buyer, where the minute is the right scale and "45 s" reads
+ * as a course not worth paying for; this is what an author is shown about
+ * their own unfinished work, where the honest number is the useful one.
+ *
+ * So the two surfaces disagree, deliberately, below a minute. If they should
+ * ever agree, the storefront is the side to change - not this one.
+ */
+export function durationLabel(t: Translate, totalSeconds: number): string {
+    const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.round(totalSeconds)) : 0;
+    if (safe < 60) return t("runtimeSeconds", { seconds: safe });
+    return runtimeLabel(t, safe / 60);
+}

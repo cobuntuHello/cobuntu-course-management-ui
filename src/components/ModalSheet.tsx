@@ -167,8 +167,27 @@ export function ModalSheet({
          * rendered inside that subtree resolves against the header's box rather
          * than the viewport. See ModalClose for the same note.
          */
+        /*
+         * ── z-[130], ABOVE BottomSheet's z-[120] ───────────────────────
+         *
+         * This sheet is opened from two places and one of them is from INSIDE
+         * a BottomSheet: the lesson dialog's Replace, and its "Link a video".
+         * At z-[60] both of those rendered behind the sheet that raised them -
+         * the backdrop dimmed, the lesson dialog stayed lit on top of it, and
+         * the dialog you had just asked for was invisible.
+         *
+         * Raised here rather than behind a `nested` flag on the caller. The
+         * flag would be right at two call sites and forgotten at the third,
+         * and there is no case in this package where a BottomSheet should
+         * cover a ModalSheet: ModalSheet is not exported, its only consumer is
+         * AddVideoLessonModal, and that is opened either from the page or from
+         * a BottomSheet. Above is always the correct answer.
+         *
+         * The desktop header is z-[52] and BottomSheet is z-[120]; this sits
+         * one layer over the highest of them.
+         */
         <div
-            className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
+            className="fixed inset-0 z-[130] flex items-end justify-center p-0 sm:items-center sm:p-4"
             role="dialog"
             aria-modal="true"
             aria-label={label ?? title}

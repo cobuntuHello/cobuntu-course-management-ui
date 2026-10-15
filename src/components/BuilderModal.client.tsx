@@ -145,6 +145,7 @@ export function BuilderModal({
   subtitle,
   onClose,
   stepKey,
+  hideClose,
   children,
 }: {
   title: string;
@@ -179,6 +180,18 @@ export function BuilderModal({
    * doing steps in one sheet instead of stacking dialogs.
    */
   stepKey?: string;
+  /**
+   * Drop the desktop X.
+   *
+   * For a step that is not the sheet's root. The X closes the WHOLE sheet, so
+   * on a sub-step it sits a few pixels from a Back button and does something
+   * entirely different with no way to tell them apart by looking - and the one
+   * that throws the step away is the one that looks like a dismissal.
+   *
+   * Mobile is unaffected: it never had the X (grabber, swipe and backdrop
+   * instead), so this only removes something on desktop.
+   */
+  hideClose?: boolean;
   children: ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
@@ -188,7 +201,7 @@ export function BuilderModal({
       open
       onClose={onClose}
       ariaLabel={title}
-      showDesktopClose
+      showDesktopClose={!hideClose}
       /*
        * A height ceiling plus `flex flex-col`, because the body below scrolls
        * inside the panel. Without the ceiling a lesson with eight attachments

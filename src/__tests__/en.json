@@ -617,6 +617,8 @@
       "saveDescription": "Save",
       "cancelDescription": "Cancel",
       "close": "Close",
+      "saveNewQuiz": "Save",
+      "cancelNewQuiz": "Cancel",
       "sectionDescriptionTitle": "Module description",
       "lessonDescriptionTitle": "Lesson description",
       "firstSectionPlaceholder": "Module 1",
@@ -684,7 +686,8 @@
       "dragSection": "Drag to reorder this module",
       "runtimeMinutes": "{minutes} min",
       "runtimeHours": "{hours}h",
-      "runtimeHoursMinutes": "{hours}h {minutes}m"
+      "runtimeHoursMinutes": "{hours}h {minutes}m",
+      "runtimeSeconds": "{seconds} s"
     },
     "details": {
       "taughtBy": "Taught by",

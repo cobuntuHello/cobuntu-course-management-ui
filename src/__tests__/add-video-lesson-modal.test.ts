@@ -68,23 +68,30 @@ describe("the two sources live in one dialog", () => {
          * side-by-side layout coming back.
          */
         expect(builder.match(/<DropZone\b/g) ?? []).toHaveLength(2);
-        // One link trigger only: the per-lesson strip.
-        expect(builder.match(/<LinkVideoRow\b/g) ?? []).toHaveLength(1);
+        /*
+         * No LinkVideoRow at all any more. The per-lesson strip used to carry
+         * one, and it became a second route to what Replace already does:
+         * Replace opens this same dialog, with both halves, pointed at the
+         * lesson. The component went with its only call site.
+         */
+        expect(builder).not.toContain("LinkVideoRow");
     });
 
-    it("the per-lesson strip gets the link form with no upload half", () => {
+    it("the lesson's own picker gets BOTH halves, pointed at that lesson", () => {
         /*
-         * That lesson's own strip already carries its upload control, so a
-         * second one a centimetre away would be two ways to do one thing.
-         * `onFiles` is what switches the upload half on, so its ABSENCE here
-         * is the assertion.
+         * This used to assert the opposite: the per-lesson strip got the link
+         * form ALONE (no `onFiles`), because the strip carried its own upload
+         * button a centimetre away and two routes to one outcome is one too
+         * many.
+         *
+         * The strip is gone. Replace opens this dialog now, so the dialog has
+         * to be the whole question - a file or a link - and it has to write to
+         * the LESSON rather than to the section, or it would create a new
+         * lesson instead of replacing this one's video.
          */
-        const row = builder.slice(
-            builder.indexOf("function LinkVideoRow"),
-            builder.indexOf("function useBulkUpload"),
-        );
-        expect(row).toContain("<AddVideoLessonModal");
-        expect(row).not.toContain("onFiles=");
+        const picker = builder.slice(builder.indexOf("open={videoPicker}"));
+        expect(picker.slice(0, 600)).toContain("onFiles=");
+        expect(picker.slice(0, 600)).toContain("target={{ lessonId: lesson.id }}");
     });
 
     it("does not promise an upload half it is not showing", () => {
@@ -94,7 +101,15 @@ describe("the two sources live in one dialog", () => {
          * already have on YouTube", with no upload anywhere on screen. The
          * heading has to follow the content.
          */
-        expect(builder).toContain('title={both ? t("addVideoTitle") : t("linkVideoLabel")}');
+        /*
+         * The `both` ternary is still the DEFAULT, and that is what this
+         * pins. A caller may now override the heading - the lesson sheet
+         * does, because it is replacing a video rather than adding a lesson -
+         * but an override is a deliberate act at a call site, whereas the
+         * fallback is what every other caller silently gets. If the fallback
+         * stopped following the content, the bug would be back everywhere.
+         */
+        expect(builder).toContain('title={title ?? (both ? t("addVideoTitle") : t("linkVideoLabel"))}');
         expect(builder).toContain('subtitle={both ? t("addVideoSubtitle") : t("linkVideoExplainer")}');
         expect(builder).toContain("const both = !!onFiles;");
     });
