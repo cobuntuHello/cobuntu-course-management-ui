@@ -1364,6 +1364,31 @@ function LessonRow({
   useEffect(() => {
     if (isNew) setOpen(true);
   }, [isNew]);
+
+  /*
+   * Leaving the sheet of a quiz that was created to open it.
+   *
+   * Cancel, the X and Escape all land here, so a quiz is added to the course
+   * by ONE action and one only: pressing Save. Dismissing the sheet any other
+   * way takes the quiz and its lesson back out.
+   *
+   * This started the other way round - the X and Escape kept it, on the
+   * grounds that Escape is pressed by reflex and losing work to it is worse
+   * than an empty quiz left lying in the outline. That trades one surprise for
+   * another, and the quieter surprise is the wrong one to pick: a sheet with a
+   * Save button on it implies nothing is saved until Save, and an X that
+   * commits anyway contradicts the footer it sits above.
+   *
+   * `createQuiz` is always called on a lesson made for it, so the lesson has
+   * nothing else in it to keep and goes with the quiz.
+   */
+  const discardNewQuiz = () => void run(async () => {
+    toRoot();
+    setOpen(false);
+    onSettled?.();
+    await deleteLesson(lesson.id);
+    await onChanged();
+  });
   /*
    * A confirmation REPLACES the sheet that raised it, it does not sit on top.
    *
@@ -1855,11 +1880,13 @@ function LessonRow({
                       : tq("typeMultipleChoice")
                     : lesson.quizId ? t("editQuiz") : t("editLesson")
           }
-          /* Closing with the X or Escape KEEPS a new quiz - only Cancel
-             discards it. Escape is pressed by reflex and destroying something
-             on it would be the worse failure of the two; an empty quiz left
-             in the outline is visible and one press from gone. */
-          onClose={() => { toRoot(); setOpen(false); onSettled?.(); }}
+          /* A new quiz is DISCARDED by the X and by Escape, exactly as it is
+             by Cancel - only Save adds it. See `discardNewQuiz`. */
+          onClose={() => {
+            if (isNew) { discardNewQuiz(); return; }
+            toRoot();
+            setOpen(false);
+          }}
           /* Keyed by the step, and by WHICH question, so moving between two
              questions cross-fades rather than swapping the fields underneath
              a cursor that is already in one of them. */
@@ -2212,24 +2239,18 @@ function LessonRow({
             * learners would be asked to sit it, and the author would have to
             * work out that the way to undo "Add a quiz" is to delete a row.
             *
-            * So Cancel means what it says: the quiz and its lesson go. Save
-            * keeps it. The title is already committed by the time either runs,
-            * because pressing a footer button blurs the field.
+            * So Save is the ONLY thing that adds a quiz to the course. Cancel
+            * takes it back out, and so do the X and Escape - every way out of
+            * this sheet except Save is the same way out. The title is already
+            * committed by the time Save runs, because pressing a footer button
+            * blurs the field first.
             */}
           <ModalFooter>
             {isNew ? (
               <>
                 <ModalButton
                   disabled={busy}
-                  onClick={() => void run(async () => {
-                    /* Created-then-cancelled: the lesson goes with the quiz.
-                       `createQuiz` was called on a lesson made for it, so the
-                       lesson has nothing else in it to keep. */
-                    setOpen(false);
-                    onSettled?.();
-                    await deleteLesson(lesson.id);
-                    await onChanged();
-                  })}
+                  onClick={discardNewQuiz}
                 >
                   {t("cancelNewQuiz")}
                 </ModalButton>

@@ -275,6 +275,14 @@ describe("adding a quiz", () => {
     await waitFor(() => expect(deleteLesson).toHaveBeenCalledWith("lesson-new"));
   });
 
+  it("the X takes it back out too - only Save adds it", async () => {
+    await addQuiz();
+    await screen.findByRole("dialog");
+    /* The sheet's own close control, not the footer's Cancel. */
+    fireEvent.click(sheet().getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(deleteLesson).toHaveBeenCalledWith("lesson-new"));
+  });
+
   it("Save keeps it, and the footer goes back to the ordinary one", async () => {
     await addQuiz();
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
