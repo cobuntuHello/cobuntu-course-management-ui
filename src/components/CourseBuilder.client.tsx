@@ -1772,7 +1772,13 @@ function LessonRow({
                       questionKind(currentQuestion, tq("trueLabel"), tq("falseLabel")) === "boolean"
                       ? tq("typeTrueFalse")
                       : tq("typeMultipleChoice")
-                    : lesson.quizId ? t("editQuiz") : t("editLesson")
+                    /* A quiz that was created a second ago is being ADDED,
+                       not edited - Save is what will add it, and a sheet
+                       headed "Edit quiz" above a Save button describes the
+                       wrong action. Only the root step changes: the question
+                       and marking steps are the same screens either way. */
+                    : isNew ? t("addQuiz")
+                      : lesson.quizId ? t("editQuiz") : t("editLesson")
           }
           /* A new quiz is DISCARDED by the X and by Escape, exactly as it is
              by Cancel - only Save adds it. See `discardNewQuiz`. */

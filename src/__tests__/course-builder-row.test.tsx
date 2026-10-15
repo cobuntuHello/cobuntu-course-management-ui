@@ -302,6 +302,13 @@ describe("adding a quiz", () => {
     expect(sheet().queryByRole("button", { name: "Remove quiz" })).toBeNull();
   });
 
+  it("is headed as an ADD, not an edit", async () => {
+    await addQuiz();
+    const dlg = await screen.findByRole("dialog");
+    expect(within(dlg).getByText("Add a quiz")).toBeTruthy();
+    expect(within(dlg).queryByText("Edit quiz")).toBeNull();
+  });
+
   it("Cancel takes the quiz back out of the course", async () => {
     await addQuiz();
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
