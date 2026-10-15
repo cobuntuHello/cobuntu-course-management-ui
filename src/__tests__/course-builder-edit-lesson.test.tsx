@@ -86,12 +86,11 @@ async function openLesson(l: CourseLesson = lesson()) {
  * the file instead of replacing this one's video, so the assertion fails
  * describing a feature that works.
  */
-function fileInput(accept: "video" | "caption" | "any") {
+function fileInput(accept: "video" | "caption") {
   const dialog = screen.getByRole("dialog");
   const inputs = Array.from(dialog.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
   if (accept === "video") return inputs.find((i) => i.accept.includes("video/mp4"))!;
-  if (accept === "caption") return inputs.find((i) => i.accept.includes("vtt"))!;
-  return inputs.find((i) => !i.accept)!;
+  return inputs.find((i) => i.accept.includes("vtt"))!;
 }
 
 beforeEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -253,6 +252,34 @@ describe("the video", () => {
     await waitFor(() => expect(deleteLessonMedia).toHaveBeenCalledWith("m-1"));
   });
 
+  /* A lesson created by dropping a file is already named from it; a lesson
+     made some other way and then given a video was the case that stayed
+     "Lesson title" with a video in it. */
+  it("names an untitled lesson after the video it is given", async () => {
+    const sheet = await openLesson(lesson({ title: "", media: [] }));
+    fireEvent.click(sheet.getByRole("button", { name: /^Add video$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Add video/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "01-centring-final.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
+    });
+    await waitFor(() => expect(updateLesson).toHaveBeenCalledWith("lesson-1", { title: "Centring" }));
+  });
+
+  /* The guard. Renaming on every upload would take the author's own title
+     away as a side effect of fixing their video, unrecoverably. */
+  it("leaves a lesson the author has named alone", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Replace/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "take-2.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
+    });
+    await waitFor(() => expect(uploadCourseFile).toHaveBeenCalled());
+    expect(updateLesson).not.toHaveBeenCalled();
+  });
+
   it("deletes nothing when the lesson had no video to begin with", async () => {
     const sheet = await openLesson(lesson({ media: [] }));
     fireEvent.click(sheet.getByRole("button", { name: /^Add video$/ }));
@@ -285,12 +312,22 @@ describe("the video", () => {
 
 });
 
-describe("adding a file", () => {
-  it("uploads it as an ATTACHMENT, whatever its type", async () => {
-    await openLesson();
-    fireEvent.change(fileInput("any"), { target: { files: [new File(["x"], "kit.pdf", { type: "application/pdf" })] } });
-    await waitFor(() => expect(uploadCourseFile).toHaveBeenCalled());
-    expect(uploadCourseFile.mock.calls[0][2]).toMatchObject({ kind: "ATTACHMENT" });
+describe("the controls that were taken off the strip", () => {
+  /*
+   * Both removed deliberately, so these pin the ABSENCE - otherwise the next
+   * person to touch this strip has nothing telling them the gap is a decision
+   * rather than an oversight.
+   */
+  it("offers no separate 'Link a video': Replace already asks that", async () => {
+    const sheet = await openLesson();
+    expect(sheet.queryByRole("button", { name: /Link a video/ })).toBeNull();
+  });
+
+  /* KNOWN CONSEQUENCE: nothing in the builder adds an attachment any more.
+     Existing ones still list and can still be deleted. */
+  it("offers no 'Add a file'", async () => {
+    const sheet = await openLesson();
+    expect(sheet.queryByRole("button", { name: /Add a file/ })).toBeNull();
   });
 });
 
@@ -339,18 +376,6 @@ describe("removing the lesson", () => {
   });
 });
 
-describe("linking a video the author already has online", () => {
-  it("opens its own dialog from the lesson's strip", async () => {
-    const sheet = await openLesson();
-    fireEvent.click(sheet.getByRole("button", { name: /Link a video/ }));
-    /* A second sheet, over the lesson's, with somewhere to paste a URL. */
-    await waitFor(() => {
-      const urlField = document.querySelector('input[type="url"], input[placeholder*="http" i]');
-      expect(urlField).toBeTruthy();
-    });
-  });
-});
-
 describe("when an upload fails", () => {
   /*
    * Surfaced, unlike every other failure on this page. An upload is the one
@@ -359,22 +384,25 @@ describe("when an upload fails", () => {
    */
   it("says so instead of failing quietly", async () => {
     uploadCourseFile.mockRejectedValueOnce(new Error("Bucket refused the file"));
-    await openLesson();
-    fireEvent.change(fileInput("any"), {
-      target: { files: [new File(["x"], "kit.pdf", { type: "application/pdf" })] },
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    const picker = await screen.findByRole("dialog", { name: /Replace/ });
+    const zone = within(picker).getByText("Upload a video file").closest("div") as HTMLElement;
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(["x"], "new.mp4", { type: "video/mp4" })], items: [], types: ["Files"] },
     });
     expect(await screen.findByText("Bucket refused the file")).toBeTruthy();
   });
 
-  it("lets the same file be chosen again for a retry", async () => {
-    uploadCourseFile.mockRejectedValueOnce(new Error("nope"));
+  it("clears the caption input so the same file can be retried", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("en");
+    uploadLessonMedia.mockRejectedValueOnce(new Error("nope"));
     await openLesson();
-    const input = fileInput("any");
-    const file = new File(["x"], "kit.pdf", { type: "application/pdf" });
-    fireEvent.change(input, { target: { files: [file] } });
-    await screen.findByText("nope");
-    /* The input clears itself after each pick; without that, choosing the
-       SAME file again fires no change event and the retry is impossible. */
+    const input = fileInput("caption");
+    fireEvent.change(input, { target: { files: [new File(["x"], "subs.vtt", { type: "text/vtt" })] } });
+    await waitFor(() => expect(uploadLessonMedia).toHaveBeenCalled());
+    /* Without the clear, choosing the SAME file again fires no change event
+       and the retry after a failure is impossible. */
     expect(input.value).toBe("");
   });
 });

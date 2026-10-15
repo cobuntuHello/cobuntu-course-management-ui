@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useTranslations } from "next-intl";
 import { ModalSheet, SheetFooterButtons } from "./ModalSheet";
 import { readYoutubeDuration } from "../lib/youtube-media";
-import { AlertCircle, Unlock, Link as LinkIcon, Captions, Check, ChevronDown, ChevronRight, ChevronUp, Eye, FileText, FileX2, Film, Gauge, GripVertical, ListChecks, Loader2, Lock, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { AlertCircle, Unlock, Captions, Check, ChevronDown, ChevronRight, ChevronUp, Eye, FileText, FileX2, Film, Gauge, GripVertical, ListChecks, Loader2, Lock, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -301,50 +301,6 @@ export function UploadNotice({
  * decided they may (2026-10-02). What they must not do is make it by accident,
  * so it is stated before they commit, with what to do instead.
  */
-function LinkVideoRow({
-    target,
-    disabled,
-    onLinked,
-}: {
-    /*
-     * A LESSON that already exists. The SECTION case used to come through here
-     * too, from a button under the drop zone; both sources now live together
-     * in AddLessonCard's dialog, so what is left is the per-lesson strip.
-     */
-    target: UploadTarget | (() => Promise<UploadTarget>);
-    disabled?: boolean;
-    onLinked: () => Promise<void>;
-}) {
-    const t = useTranslations("learning.builder");
-    const [open, setOpen] = useState(false);
-
-    return (
-        <>
-            {/* Sits in the lesson's own action strip, in the same shape as
-                "add a file" and "add captions" beside it. */}
-            <button
-                type="button"
-                disabled={disabled}
-                onClick={() => setOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-[var(--button-radius,0.5rem)] border-none bg-transparent px-2 py-1.5 text-[11.5px] font-medium text-zinc-600 cursor-pointer transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40"
-            >
-                <LinkIcon size={13} aria-hidden="true" />
-                {t("linkVideoShort")}
-            </button>
-            {/* Link ONLY. This trigger belongs to a lesson that already exists,
-                and that lesson's own strip already carries its upload control -
-                offering a second one here would be two ways to do the same
-                thing a centimetre apart. */}
-            <AddVideoLessonModal
-                open={open}
-                onClose={() => setOpen(false)}
-                target={target}
-                onAdded={onLinked}
-            />
-        </>
-    );
-}
-
 function useBulkUpload(onChanged: () => Promise<void>) {
     const [progress, setProgress] = useState<BulkProgress | null>(null);
     const [failed, setFailed] = useState<string[]>([]);
@@ -1274,7 +1230,6 @@ function LessonRow({
   const t = useTranslations("learning.builder");
   const tq = useTranslations("learning.quiz");
   const { busy, run } = useBusy();
-  const fileRef = useRef<HTMLInputElement>(null);
   const captionRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   /* 0-100 while a file moves, null when nothing is moving. An 86MB upload
@@ -1374,6 +1329,26 @@ function LessonRow({
            having failed. */
         if (replaces && replaces !== media.id) {
           try { await deleteLessonMedia(replaces); } catch { /* already gone */ }
+        }
+        /*
+         * The lesson takes its name from the video - but only while it has not
+         * been given one.
+         *
+         * A lesson created by dropping a file is already named this way
+         * (lessonNameFromFile, via the server), so a lesson created some other
+         * way and then given a video was the one case that stayed "Lesson
+         * title" with a video sitting in it. This closes that.
+         *
+         * Guarded on the title being EMPTY. Renaming on every upload would
+         * mean an author who called their lesson "Centring the clay" and then
+         * replaced take 1 with take 2 gets "Take 2", silently, as a side
+         * effect of fixing their video - and the name they chose is not
+         * recoverable from anything on screen. A guess is worth making when
+         * there is nothing to lose and never when there is.
+         */
+        if (kind === "VIDEO" && !lesson.title.trim()) {
+          const named = lessonNameFromFile(file.name);
+          if (named) await updateLesson(lesson.id, { title: named });
         }
         await onChanged();
       } catch (err) {
@@ -1974,6 +1949,33 @@ function LessonRow({
               * somebody who has not seen the lessons it tests will fail it. A
               * quiz INSIDE the free range is fine; it just cannot end it.
               */}
+            {/*
+              * Captions, as a row rather than as a text button down with the
+              * file controls.
+              *
+              * They are a property of the lesson in the same way its notes
+              * are - "what language can people read this in" - and the strip
+              * they used to sit in read as operations on the video file. The
+              * row also has somewhere to say what is already there, which an
+              * 11.5px button never did: the outline's "No captions" pill is
+              * gone, so this is now the only place the absence shows.
+              *
+              * WCAG 1.2.2 is Level A, so a video with no captions is a
+              * conformance gap rather than a missing nicety.
+              */}
+            {!lesson.quizId && video && (
+              <SettingRow
+                icon={<Captions size={17} aria-hidden="true" />}
+                label={captions.length > 0 ? t("hasCaptions") : t("addCaptions")}
+                preview={captions.length > 0
+                  ? captions.map((c) => c.language ?? "").filter(Boolean).join(", ") || undefined
+                  : undefined}
+                done={captions.length > 0}
+                disabled={busy}
+                onClick={() => captionRef.current?.click()}
+              />
+            )}
+
             {!lesson.quizId && (
               <SettingRow
                 icon={<Eye size={17} aria-hidden="true" />}
@@ -2121,18 +2123,31 @@ function LessonRow({
             )}
           </div>
 
-          {/* ── The two secondary actions ────────────────────────────── */}
+          {/*
+            * ── What is left of the action strip ──────────────────────
+            *
+            * It held three buttons: "Add a file", "Add captions" and "Link a
+            * video". None of them is here now.
+            *
+            * LINK A VIDEO was a second way to do what Replace already does.
+            * Replace opens a dialog that asks the whole question - a file, or
+            * a link - so a separate link button was two routes to one outcome
+            * a centimetre apart, the smaller of which looked like it did
+            * something else.
+            *
+            * CAPTIONS moved UP, to a SettingRow beside the notes. It is a
+            * thing you set on the lesson, like its description, not a file
+            * operation on the video; the hidden input stays here because that
+            * is where the other one lives.
+            *
+            * ADD A FILE is gone at the author's request. KNOWN CONSEQUENCE:
+            * nothing in the builder adds an attachment any more. Existing
+            * attachments still list above and can still be deleted, and the
+            * rows, the upload path and the API are all untouched - so this
+            * hides the feature rather than removing it, and restoring the
+            * control is restoring one button.
+            */}
           <div className="mt-2.5 flex items-center gap-1">
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void onFile(file, "ATTACHMENT");
-              }}
-            />
             <input
               ref={captionRef}
               type="file"
@@ -2144,37 +2159,6 @@ function LessonRow({
                 if (file) void onCaption(file);
               }}
             />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-[var(--button-radius,0.5rem)] border-none bg-transparent px-2 py-1.5 text-[11.5px] font-medium text-zinc-600 cursor-pointer transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40"
-            >
-              <Paperclip size={13} aria-hidden="true" />
-              {t("addFile")}
-            </button>
-            <button
-              type="button"
-              onClick={() => captionRef.current?.click()}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-[var(--button-radius,0.5rem)] border-none bg-transparent px-2 py-1.5 text-[11.5px] font-medium text-zinc-600 cursor-pointer transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40"
-            >
-              <Captions size={13} aria-hidden="true" />
-              {t("addCaptions")}
-            </button>
-            {/*
-              * Linking, for a lesson that already exists.
-              *
-              * The server has always had the route; nothing called it, so an
-              * author who had made a lesson and wanted to point it at a video
-              * they already had online could only start again from the module.
-              */}
-            <LinkVideoRow
-              target={{ lessonId: lesson.id }}
-              disabled={busy}
-              onLinked={onChanged}
-            />
-
             {/*
               * Where the video comes from, asked as ONE question.
               *
