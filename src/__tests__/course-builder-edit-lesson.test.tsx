@@ -93,6 +93,19 @@ function fileInput(accept: "video" | "caption") {
   return inputs.find((i) => i.accept.includes("vtt"))!;
 }
 
+/*
+ * The sheet's X, told apart from the footer's "Close" button.
+ *
+ * Both carry the accessible name "Close" - the X from its aria-label, the
+ * footer one from its text - so a query by name alone matches two elements.
+ * The X is the one with no text in it.
+ */
+function closeX() {
+  return within(screen.getByRole("dialog"))
+    .queryAllByRole("button", { name: "Close" })
+    .find((b) => !b.textContent?.trim()) ?? null;
+}
+
 beforeEach(() => { cleanup(); vi.clearAllMocks(); });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -120,7 +133,10 @@ describe("the name", () => {
   });
 });
 
-describe("the notes", () => {
+/* 15s, not the default 5: every case in here opens the notes step, which
+   dynamically imports Quill. Three of them in one file put the last one past
+   the default on a cold run. */
+describe("the notes", { timeout: 15000 }, () => {
   it("open their own step and write on save", async () => {
     const sheet = await openLesson();
     fireEvent.click(sheet.getByRole("button", { name: /Add notes for this lesson/ }));
@@ -128,6 +144,25 @@ describe("the notes", () => {
     fireEvent.click(save);
     await waitFor(() => expect(updateLesson).toHaveBeenCalled());
     expect(updateLesson.mock.calls[0][1]).toHaveProperty("description");
+  });
+
+  /* The X closes the WHOLE sheet, so on a sub-step it sits beside a Back
+     button looking like it does the same thing and throws the step away
+     instead. Desktop-only control; mobile never had it. */
+  it("drop the X, leaving Back as the only way out of the step", async () => {
+    const sheet = await openLesson();
+    expect(closeX()).toBeTruthy();
+    fireEvent.click(sheet.getByRole("button", { name: /Add notes for this lesson/ }));
+    await screen.findByRole("button", { name: /Back/i });
+    expect(closeX()).toBeNull();
+  });
+
+  it("put it back on the way out of the step", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /Add notes for this lesson/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Back/i }));
+    await waitFor(() => expect(screen.getByText("Edit lesson")).toBeTruthy());
+    expect(closeX()).toBeTruthy();
   });
 
   it("write nothing when the step is backed out of", async () => {

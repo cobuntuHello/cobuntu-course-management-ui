@@ -1822,6 +1822,10 @@ function LessonRow({
              questions cross-fades rather than swapping the fields underneath
              a cursor that is already in one of them. */
           stepKey={step.k === "question" ? `question:${step.id}` : step.k}
+          /* No X on the notes step. Its footer already has Back, and the X
+             three centimetres away discards the sheet entirely - two controls
+             that look alike, one step apart, doing opposite things. */
+          hideClose={step.k === "description"}
           /*
            * Step 2 is the description. Same sheet, swapped contents - rather
            * than a dialog stacked on a dialog (two backdrops, two Escapes) or
