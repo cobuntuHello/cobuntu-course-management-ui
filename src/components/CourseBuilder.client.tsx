@@ -1626,7 +1626,20 @@ function LessonRow({
              filename, so it is a guess worth selecting. It used to focus the
              field inside the dialog, which nobody had open. */
           selectOnMount={selectTitleOnMount}
-          className="min-w-0 flex-1 rounded-xl bg-zinc-50 px-2.5 py-2 text-[13.5px] font-semibold ring-1 ring-zinc-200/80 transition-shadow hover:ring-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+          /*
+           * Shape-for-shape the module field's, one level up: same `rounded-xl`,
+           * same `px-3 py-2`, same `ring-1 ring-zinc-200`. The padding was
+           * `px-2.5` and the ring `/80`, which made a field that was nearly but
+           * not quite the one above it - and "nearly" is what reads as a
+           * mistake, since the two sit eight pixels apart on the same page.
+           *
+           * Two differences are kept and both are deliberate: the text is
+           * smaller, because a lesson title is not a chapter heading and sits
+           * inside one; and the fill is zinc-50 on the row's white, which is
+           * the module header's white-on-zinc-50 inverted. A white field on a
+           * white row is not a field.
+           */
+          className="min-w-0 flex-1 rounded-xl bg-zinc-50 px-3 py-2 text-[13.5px] font-semibold ring-1 ring-zinc-200 transition-shadow hover:ring-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300"
         />
 
         <button
