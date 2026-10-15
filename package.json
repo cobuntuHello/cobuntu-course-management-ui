@@ -1,6 +1,6 @@
 {
   "name": "@cobuntu/course-management-ui",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Shared course (learning) authoring UI + API layer for Cobuntu apps. Mirrors @cobuntu/product-management-ui and @cobuntu/event-management-ui.",
   "main": "./src/index.ts",

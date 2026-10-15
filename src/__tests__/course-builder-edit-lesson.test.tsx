@@ -169,6 +169,33 @@ describe("the video", () => {
     expect(picker.queryByRole("button", { name: "Add this lesson" })).toBeNull();
   });
 
+  /*
+   * REPORTED: the picker opened behind the lesson sheet that raised it. The
+   * backdrop dimmed, the lesson dialog stayed lit on top, and the dialog you
+   * had just asked for was invisible. BottomSheet (the lesson sheet) is
+   * z-[120] and ModalSheet (the picker) was z-[60].
+   *
+   * Asserted as a COMPARISON rather than against the literal 130, so the pair
+   * can be renumbered together without this failing for no reason - what
+   * matters is which of the two is on top.
+   */
+  it("opens in front of the lesson sheet, not behind it", async () => {
+    const sheet = await openLesson();
+    fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
+    await screen.findByRole("dialog", { name: /Replace/ });
+
+    const layer = (el: Element | null) => {
+      for (let n = el; n; n = n.parentElement) {
+        const m = (n as HTMLElement).className?.toString().match(/z-\[(\d+)\]/);
+        if (m) return Number(m[1]);
+      }
+      return 0;
+    };
+    const picker = screen.getByRole("dialog", { name: /Replace/ });
+    const lessonSheet = screen.getAllByRole("dialog").find((d) => d !== picker)!;
+    expect(layer(picker)).toBeGreaterThan(layer(lessonSheet));
+  });
+
   it("uploads a dropped file as a VIDEO", async () => {
     const sheet = await openLesson();
     fireEvent.click(sheet.getByRole("button", { name: /^Replace$/ }));
