@@ -1224,6 +1224,8 @@ function LessonRow({
   isNew,
   onSettled,
   isFree,
+  isLastFree,
+  onSetBoundary,
 }: {
   lesson: CourseLesson;
   /** The section this lesson sits in. Not on the lesson payload. */
@@ -1244,6 +1246,10 @@ function LessonRow({
   isNew?: boolean;
   /** The row is no longer new: it was saved, cancelled, or closed. */
   onSettled?: () => void;
+  /** This lesson is where the free preview currently ends. */
+  isLastFree?: boolean;
+  /** Move the whole course's preview boundary. Null means no free preview. */
+  onSetBoundary: (lastFreeLessonId: string | null) => void;
 
   /**
    * Which side of the paywall this row is on RIGHT NOW, which during a drag is
@@ -1892,6 +1898,42 @@ function LessonRow({
               disabled={busy}
               onClick={() => setStep({ k: "description" })}
             />
+
+            {/*
+              * Where the free preview ends, set from inside the lesson.
+              *
+              * This has now lived in both places. It began here, moved to the
+              * row on the grounds that "the sample stops after this one" only
+              * means something next to the lessons it stops before, and is
+              * back because the row had to give up every control it had to
+              * leave its title field room to be a field.
+              *
+              * It reads as a TOGGLE rather than a one-way action, which the
+              * row version never could: the row hid the button once a lesson
+              * was the boundary, so the state had no representation and
+              * undoing it meant finding the panel. Here the same line reports
+              * which of the two states the lesson is in, and pressing it moves
+              * to the other one.
+              *
+              * The sheet deliberately does NOT close on press. Every other row
+              * in it commits in place, and the feedback is local: this line
+              * flips to "The free preview ends here" with a tick as soon as
+              * the write lands.
+              *
+              * Never on a quiz - a quiz is not a sample of anything, and
+              * somebody who has not seen the lessons it tests will fail it. A
+              * quiz INSIDE the free range is fine; it just cannot end it.
+              */}
+            {!lesson.quizId && (
+              <SettingRow
+                icon={<Eye size={17} aria-hidden="true" />}
+                label={isLastFree ? t("previewEndsHere") : t("endPreviewHere")}
+                preview={isLastFree ? t("removePreview") : undefined}
+                done={isLastFree}
+                disabled={busy}
+                onClick={() => onSetBoundary(isLastFree ? null : lesson.id)}
+              />
+            )}
           </div>
 
           {lesson.quizId ? (
@@ -3468,6 +3510,8 @@ export function CourseBuilder({
                      * the same answer.
                      */
                     isFree={previewDrag.isFree(lesson.id)}
+                    isLastFree={lesson.id === previewDrag.effectiveId}
+                    onSetBoundary={applyBoundary}
                   />
                   {lesson.id === previewDrag.effectiveId && (
                     <PreviewBoundaryLine

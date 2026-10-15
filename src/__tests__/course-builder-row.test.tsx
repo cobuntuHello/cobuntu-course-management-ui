@@ -18,6 +18,7 @@ const createSection = vi.fn(async (_productId: string, _draft: { title: string }
 const createLesson = vi.fn(async (_sectionId: string, _draft: { title: string }) => ({ id: "lesson-new" }));
 const updateLesson = vi.fn(async (_lessonId: string, _patch: { title?: string }) => ({}));
 const deleteLesson = vi.fn(async (_lessonId: string) => undefined);
+const setPreviewBoundary = vi.fn(async (_productId: string, _lastFreeLessonId: string | null) => ({ freeCount: 1 }));
 const getCourseContentClient = vi.fn(async (_tag: string, _productId: string) => [] as CourseSection[]);
 
 vi.mock("../lib/api-learning-authoring", () => ({
@@ -32,7 +33,7 @@ vi.mock("../lib/api-learning-authoring", () => ({
   deleteLessonMedia: vi.fn(),
   reorderSections: vi.fn(),
   reorderLessons: vi.fn(),
-  setPreviewBoundary: vi.fn(),
+  setPreviewBoundary: (...a: Parameters<typeof setPreviewBoundary>) => setPreviewBoundary(...a),
   linkLessonVideo: vi.fn(),
 }));
 
@@ -215,6 +216,35 @@ describe("a lesson's name is editable on the row", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit lesson" }));
     const sheet = within(await screen.findByRole("dialog"));
     expect(sheet.getByRole("button", { name: "Remove lesson" })).toBeTruthy();
+  });
+
+  /* The control moved off the row and into the sheet, where it reads as a
+     toggle: the row version hid itself once a lesson WAS the boundary, so the
+     state had no representation and undoing it meant finding the panel. */
+  it("sets the free-preview boundary from inside the dialog", async () => {
+    await mount([section([lesson()])]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit lesson" }));
+    const sheet = within(await screen.findByRole("dialog"));
+    fireEvent.click(sheet.getByRole("button", { name: /End the free preview here/ }));
+    await waitFor(() => expect(setPreviewBoundary).toHaveBeenCalledWith("prod-1", "lesson-1"));
+  });
+
+  it("reports the state, and pressing it again removes the preview", async () => {
+    await mount([section([lesson({ isPreview: true })])]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit lesson" }));
+    const sheet = within(await screen.findByRole("dialog"));
+    /* This lesson already ends the preview, so the line says so... */
+    const row = sheet.getByRole("button", { name: /The free preview ends here/ });
+    /* ...and pressing it clears the boundary rather than setting it again. */
+    fireEvent.click(row);
+    await waitFor(() => expect(setPreviewBoundary).toHaveBeenCalledWith("prod-1", null));
+  });
+
+  it("is never offered on a quiz", async () => {
+    await mount([section([lesson({ id: "lq", title: "Module check", quizId: "quiz-1" })])]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit quiz" }));
+    const sheet = within(await screen.findByRole("dialog"));
+    expect(sheet.queryByRole("button", { name: /free preview/i })).toBeNull();
   });
 
   it("still offers a way to open the lesson", async () => {
