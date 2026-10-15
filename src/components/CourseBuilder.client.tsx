@@ -1223,9 +1223,7 @@ function LessonRow({
   selectTitleOnMount,
   isNew,
   onSettled,
-  isLastFree,
   isFree,
-  onSetBoundary,
 }: {
   lesson: CourseLesson;
   /** The section this lesson sits in. Not on the lesson payload. */
@@ -1246,16 +1244,14 @@ function LessonRow({
   isNew?: boolean;
   /** The row is no longer new: it was saved, cancelled, or closed. */
   onSettled?: () => void;
-  /** This lesson is the last free one: the line is drawn under it. */
-  isLastFree?: boolean;
+
   /**
    * Which side of the paywall this row is on RIGHT NOW, which during a drag is
    * not what the server last saved. The row reads this rather than
    * `lesson.isPreview` so the marking follows the line while it is moving.
    */
   isFree?: boolean;
-  /** Move the whole course's preview boundary. Null means no free preview. */
-  onSetBoundary: (lastFreeLessonId: string | null) => void;
+
 }) {
   const t = useTranslations("learning.builder");
   const tq = useTranslations("learning.quiz");
@@ -1700,104 +1696,42 @@ function LessonRow({
         </button>
 
         {/*
-          * Delete, on the row, in red.
+          * ── Nothing after the chevron ──────────────────────────────────
           *
-          * It was only inside the dialog, so removing a lesson you can already
-          * see meant opening it, scrolling past everything you did not come
-          * for, and finding the footer. The confirmation is what makes it safe
-          * to put back on the row.
+          * The row ended with two more controls: a delete, and an "End the
+          * free preview here" that set the paywall boundary. Both are gone,
+          * and the row now stops at the chevron.
           *
-          * The reorder chevrons are gone from here: the row drags now, and two
-          * ways to do the same thing on the same row is one control too many.
+          * The reason is the title. It is a FIELD on this row, and a field is
+          * the one thing here you have to be able to aim at and read while you
+          * type in it. Everything else on the row is `shrink-0`, so every
+          * control kept is width taken from the only element that flexes - and
+          * with the pills, the eye and the bin all present the field collapsed
+          * to a stub on a lesson that had no name yet, which is precisely when
+          * you need it.
           *
-          * KNOWN GAP: there is no longer a non-drag path at all. The dialog's
-          * Move buttons were removed too, so dragging is the only way to
-          * reorder a lesson or a quiz, and WCAG 2.5.7 asks for a SINGLE-
-          * POINTER alternative to a dragging movement (a keyboard path does
-          * not satisfy it). Modules still have their chevrons. Restoring
-          * these closes it.
+          * Where the two went:
+          *
+          * - DELETE is in the lesson's dialog, in its footer, where it was
+          *   before it was moved out here. One tap further, behind the same
+          *   confirmation.
+          * - THE BOUNDARY keeps both of its other paths. The panel above the
+          *   outline sets it to the first lesson, to the end of module one, or
+          *   removes it; and the boundary LINE itself drags, up and down the
+          *   running order, to any position (usePreviewDrag -> applyBoundary).
+          *   Dragging is what the line was given a handle for.
+          *
+          *   What is gone is the one-press "end it HERE" from a row that is
+          *   nowhere near the current line. With no preview set at all there
+          *   is no line to drag either, so that case starts at the panel. If
+          *   that turns out to be a step too many, the fix belongs in the
+          *   panel rather than back on the row.
+          *
+          * `isLastFree` and `onSetBoundary` went with the button - nothing in
+          * here read them once it was gone. The boundary LINE is drawn by the
+          * parent, beside this row rather than inside it, and the rail down a
+          * free row comes from `isFree`, which stays.
           */}
-        {/*
-          * Where the free preview ends, set from the row it ends at.
-          *
-          * It was a button inside the lesson dialog, which asked somebody to
-          * decide where a sample of the course STOPS while looking at one
-          * lesson and none of its neighbours. It is a property of the running
-          * order, not of a lesson, so it belongs next to the running order -
-          * and the line it draws (PreviewBoundaryLine, just below this row)
-          * appears the moment it is pressed, which is the whole confirmation.
-          *
-          * Never on a quiz: a quiz is not a sample of anything, and somebody
-          * who has not seen the lessons it tests will fail it.
-          */}
-        {/*
-          * The row says WHICH SIDE of the paywall it is on, and it says it on
-          * every row rather than only on the boundary.
-          *
-          * Before, the one free lesson at the edge went green and the two free
-          * ones above it looked exactly like the locked ones below. The zone
-          * was the thing being edited and the zone was the thing you could not
-          * see, so "what does a buyer actually get" could only be answered by
-          * counting rows against a line.
-          */}
-
-        {/*
-          * The control that MOVES the boundary, named rather than drawn as an
-          * eye. It was a 26px icon with no label, sitting next to a delete, and
-          * the words "free preview" appeared nowhere on the page until after
-          * you had pressed it.
-          *
-          * Not on the boundary row itself: that row has the line under it and
-          * the panel above holds its Remove. Not on a quiz either - a quiz is
-          * not a sample of anything, and somebody who has not seen the lessons
-          * it tests will fail it. A quiz INSIDE the free range is fine and
-          * shows as free; it just cannot be where the range ends.
-          */}
-        {!lesson.quizId && !isLastFree && (
-          <button
-            type="button"
-            onClick={() => onSetBoundary(lesson.id)}
-            disabled={busy}
-            title={t("endPreviewHere")}
-            /* ALWAYS VISIBLE. It was opacity-0 until the row was hovered, so
-               the one control that moves the paywall was invisible at rest and
-               absent entirely on a touch screen's first look. A control that
-               appears only once you are already pointing at it cannot be
-               found by somebody who does not know it is there. */
-            className="hidden shrink-0 items-center gap-1.5 rounded-[var(--button-radius,0.5rem)] border-none px-2.5 py-1.5 text-[11.5px] font-semibold cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-40 sm:inline-flex"
-            style={{ background: "rgba(128,128,128,0.10)", color: "#52525b" }}
-          >
-            <Eye size={13} aria-hidden="true" />
-            {t("endPreviewHere")}
-          </button>
-        )}
-        {/*
-          * Touch has no hover, so the phone keeps an always-visible icon
-          * button rather than a label that never appears.
-          */}
-        {!lesson.quizId && !isLastFree && (
-          <button
-            type="button"
-            onClick={() => onSetBoundary(lesson.id)}
-            disabled={busy}
-            aria-label={t("endPreviewHere")}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--button-radius,0.5rem)] border-none cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-40 sm:hidden"
-            style={{ background: "rgba(128,128,128,0.10)", color: "#71717a" }}
-          >
-            <Eye size={14} aria-hidden="true" />
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={askDelete}
-          disabled={busy}
-          aria-label={lesson.quizId ? t("removeQuiz") : t("removeLesson")}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--button-radius,0.5rem)] border-none cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "#fdecec", color: "#b91c1c" }}
-        >
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
       </div>
 
       {open && (
@@ -3496,7 +3430,6 @@ export function CourseBuilder({
                     selectTitleOnMount={lesson.id === bulk.firstCreatedId}
                     isNew={lesson.id === newQuizLessonId}
                     onSettled={() => setNewQuizLessonId(null)}
-                    isLastFree={lesson.id === previewDrag.effectiveId}
                     /*
                      * Free-ness comes from the DRAG, not from the row's saved
                      * `isPreview`, so the rows re-mark themselves as the line
@@ -3505,7 +3438,6 @@ export function CourseBuilder({
                      * the same answer.
                      */
                     isFree={previewDrag.isFree(lesson.id)}
-                    onSetBoundary={applyBoundary}
                   />
                   {lesson.id === previewDrag.effectiveId && (
                     <PreviewBoundaryLine

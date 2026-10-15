@@ -200,6 +200,23 @@ describe("a lesson's name is editable on the row", () => {
     expect(within(r).queryByText(/attachment/i)).toBeNull();
   });
 
+  /* The row stops at the chevron. Every shrink-0 control kept here is width
+     taken from the title field, which is the only thing on it that flexes. */
+  it("carries no delete and no preview-boundary control", async () => {
+    await mount([section([lesson({ media: [video(20)] })])]);
+    const r = screen.getByDisplayValue("Throwing a cylinder").closest("li") as HTMLElement;
+    expect(within(r).queryByRole("button", { name: "Remove lesson" })).toBeNull();
+    expect(within(r).queryByRole("button", { name: /free preview/i })).toBeNull();
+  });
+
+  /* Deleting did not go away - it went back to the dialog's footer. */
+  it("still deletes, from inside the dialog", async () => {
+    await mount([section([lesson()])]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit lesson" }));
+    const sheet = within(await screen.findByRole("dialog"));
+    expect(sheet.getByRole("button", { name: "Remove lesson" })).toBeTruthy();
+  });
+
   it("still offers a way to open the lesson", async () => {
     await mount([section([lesson()])]);
     expect(screen.getByRole("button", { name: "Edit lesson" })).toBeTruthy();
