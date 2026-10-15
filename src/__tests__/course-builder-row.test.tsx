@@ -184,6 +184,22 @@ describe("a lesson's name is editable on the row", () => {
     expect(mine.value).toBe("Centring the cl");
   });
 
+  /* The row carries ONE pill now. Four shrink-0 pills next to a flex-1 input
+     meant the pills took every pixel and the field collapsed to a stub. */
+  it("carries the duration and nothing else", async () => {
+    await mount([section([lesson({
+      media: [
+        video(20),
+        { id: "a-1", kind: "ATTACHMENT" as const, originalName: "kit.pdf", mimeType: "application/pdf", fileSize: 10, durationSeconds: null, order: 1, language: null },
+      ],
+    })])]);
+    const r = screen.getByDisplayValue("Throwing a cylinder").closest("li") as HTMLElement;
+    expect(within(r).getByText("20 s")).toBeTruthy();
+    expect(within(r).queryByText("No captions")).toBeNull();
+    expect(within(r).queryByText("Locked until they buy")).toBeNull();
+    expect(within(r).queryByText(/attachment/i)).toBeNull();
+  });
+
   it("still offers a way to open the lesson", async () => {
     await mount([section([lesson()])]);
     expect(screen.getByRole("button", { name: "Edit lesson" })).toBeTruthy();

@@ -1644,9 +1644,9 @@ function LessonRow({
            * strip of pills - which made a row three lines tall and a list of
            * six lessons a page of its own.
            *
-           * It fits because the title field flexes and the secondary pills
-           * drop out below sm (see them), leaving icon + field + at most one
-           * pill + chevron.
+           * It fits because the row carries exactly one pill now (see it), so
+           * the line is icon + field + one pill + chevron at every width, and
+           * the field is the only thing on it that flexes.
            *
            * 44px tall on a phone: it is the control that opens the lesson and
            * it no longer has the whole row's width to be found in, so it gets
@@ -1656,34 +1656,29 @@ function LessonRow({
           style={{ color: "var(--text-color)" }}
         >
           {/*
-            * No wrapper of its own at any width: the pills are laid out by the
-            * row. This used to be a flex box that wrapped them onto a second
-            * line on a phone, which is what made the row multi-line.
+            * ONE pill, and only one.
             *
-            * What keeps them from overflowing 375px instead is that only the
-            * FIRST pill survives below sm. That one is mutually exclusive
-            * (uploading, or a runtime, or "no video yet") so it is always at
-            * most one, and it is the one carrying the state an author came
-            * back to check. Captions and attachment counts are reference, not
-            * status, and the dialog is a tap away.
-            */}
-          <span className="contents">
-
-          {/*
-            * Pills, in the order someone scans for them: is it free, how long
-            * is it, is anything attached. A lesson with no video says so
-            * plainly rather than showing nothing, because "no video yet" is the
-            * state an author is looking for when they come back to finish.
+            * The row used to carry four: upload state or runtime, whether it
+            * has captions, how many attachments, and which side of the paywall
+            * it is on. That was readable while the title was static text - and
+            * stopped being readable the moment the title became a FIELD, which
+            * is the one thing on this row you have to be able to aim at. Four
+            * shrink-0 pills next to a flex-1 input means the pills win every
+            * pixel and the input collapses to a stub, which is exactly what a
+            * lesson with no name yet looked like.
             *
-            * All of them are now plain spans. The access one used to be a
-            * button, which could not live inside a row that is itself a button
-            * - and it no longer needs to be, because the dialog this row opens
-            * carries the setting.
+            * What is left is the mutually exclusive one - uploading, or a
+            * runtime, or "no video yet" - because it is the state an author
+            * comes back to the outline to check, and because being mutually
+            * exclusive it is always at most one pill wide.
+            *
+            * The three that went are all still READABLE, just not here:
+            * captions and attachments are in the lesson's dialog, a tap away,
+            * next to the files they describe. Free-vs-locked keeps its
+            * POSITIONAL signal - the rail down the left of a free row, and the
+            * boundary line under the last one - which the chip only ever
+            * repeated in words.
             */}
-          {/* No "Quiz" pill. The icon at the head of the row already says
-              which kind of thing it is, and a word repeating it takes space
-              from the pills that carry something the icon cannot - runtime,
-              upload state, a missing video. */}
           {lesson.quizId ? null : busy ? (
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ background: "#fff4de", color: "#95681a" }}>
               {t("uploading")}
@@ -1697,54 +1692,6 @@ function LessonRow({
               {t("noVideo")}
             </span>
           ) : null}
-          {video && (
-            /*
-             * Said on every lesson that has a video, present or absent, because
-             * the ABSENCE is the state worth seeing: WCAG 1.2.2 is Level A, so
-             * a video with no captions is a conformance gap rather than a
-             * missing nicety, and an author scanning their outline should be
-             * able to find the ones that still need a file.
-             */
-            <span
-              className="hidden shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold sm:block"
-              /* Only the ABSENCE is coloured. A video WITH captions is the
-                 ordinary case and does not need a success green to say so;
-                 the amber stays, because a missing caption file is a WCAG
-                 Level A gap and that is worth one warning colour on a page
-                 that otherwise has none. */
-              style={captions.length > 0
-                ? { background: "rgba(128,128,128,0.12)", color: "#52525b" }
-                : { background: "#fff4de", color: "#95681a" }}
-            >
-              {captions.length > 0 ? t("hasCaptions") : t("noCaptions")}
-            </span>
-          )}
-          {attachments.length > 0 && (
-            <span className="hidden shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold opacity-70 sm:block" style={{ background: "rgba(128,128,128,0.12)" }}>
-              {t("attachmentCount", { count: attachments.length })}
-            </span>
-          )}
-
-          {/*
-            * Which side of the paywall the row is on, said on EVERY row rather
-            * than only on the boundary - the zone is the thing being edited, so
-            * it has to be the thing you can see.
-            *
-            * It sits with the other badges now, BEFORE the chevron, rather than
-            * out past it with the controls: it is a fact about the lesson, like
-            * its length and its attachments, not a thing you can press. The
-            * chevron stays the last mark in the row, which is what makes it
-            * read as "this opens".
-            */}
-          <span
-            className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold opacity-70"
-            style={{ background: "rgba(128,128,128,0.12)" }}
-          >
-            {isFree ? t("freeChip") : t("lockedRow")}
-          </span>
-
-          </span>
-
           <ChevronRight
             size={16}
             className="shrink-0 text-zinc-300 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-zinc-400"
