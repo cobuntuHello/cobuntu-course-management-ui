@@ -53,3 +53,29 @@ export function runtimeLabel(t: Translate, totalMinutes: number): string {
 export function runtimeLabelFromSeconds(t: Translate, totalSeconds: number): string {
     return runtimeLabel(t, (Number.isFinite(totalSeconds) ? totalSeconds : 0) / 60);
 }
+
+/**
+ * ONE item's length: "45 s", "3 min", "1h 12m".
+ *
+ * ── Why this is not runtimeLabel ───────────────────────────────────────────
+ *
+ * `runtimeLabel` rounds to whole minutes, which is right for a TOTAL - nobody
+ * reads a course as "1h 12m 40s" - but wrong for a single clip, because the
+ * rounding has nowhere to go. A 20-second lesson is `Math.round(20 / 60)`,
+ * which is 0, so the builder printed "0 min" next to a video that had just
+ * finished uploading and the author read it as a failed upload. Anything under
+ * 30 seconds did it.
+ *
+ * Under a minute the number is therefore printed in SECONDS and not rounded
+ * away. At a minute and over it hands off to `runtimeLabel`, so a lesson and
+ * the course total it contributes to are written the same way.
+ *
+ * Deliberately a SEPARATE function rather than a seconds branch inside
+ * `runtimeLabel`: that one is also the storefront's course runtime, and a
+ * course announcing itself as "45 s" is not an improvement on "1 min".
+ */
+export function lessonDurationLabel(t: Translate, totalSeconds: number): string {
+    const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.round(totalSeconds)) : 0;
+    if (safe < 60) return t("runtimeSeconds", { seconds: safe });
+    return runtimeLabel(t, safe / 60);
+}

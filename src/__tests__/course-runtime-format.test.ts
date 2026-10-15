@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitRuntime, runtimeLabel, runtimeLabelFromSeconds } from "../lib/courseRuntime";
+import { splitRuntime, runtimeLabel, runtimeLabelFromSeconds, lessonDurationLabel } from "../lib/courseRuntime";
 
 /**
  * How long a course is, written the way a person would say it.
@@ -22,6 +22,7 @@ const t = (key: string, v: Record<string, string | number | Date> = {}) =>
     runtimeMinutes: `${v.minutes} min`,
     runtimeHours: `${v.hours}h`,
     runtimeHoursMinutes: `${v.hours}h ${v.minutes}m`,
+    runtimeSeconds: `${v.seconds} s`,
   }[key] ?? key);
 
 describe("splitRuntime", () => {
@@ -89,5 +90,44 @@ describe("runtimeLabel", () => {
     expect(runtimeLabel(marker, 90)).toBe("<runtimeHoursMinutes>");
     expect(runtimeLabel(marker, 30)).toBe("<runtimeMinutes>");
     expect(runtimeLabel(marker, 60)).toBe("<runtimeHours>");
+  });
+});
+
+describe("lessonDurationLabel", () => {
+  /*
+   * REPORTED from the builder: a lesson whose video had just finished
+   * uploading showed "0 min". The row rounded seconds to whole minutes, so
+   * Math.round(20 / 60) was 0 - and "0 min" next to a file you watched upload
+   * reads as an upload that silently failed. Everything under 30 seconds did
+   * it; everything from 30 to 89 claimed a flat "1 min".
+   */
+  it.each([
+    [1, "1 s"],
+    [20, "20 s"],
+    [45, "45 s"],
+    [59, "59 s"],
+  ])("writes %is as %s rather than rounding it to minutes", (seconds, label) => {
+    expect(lessonDurationLabel(t, seconds)).toBe(label);
+  });
+
+  it("switches to minutes at exactly a minute, not before", () => {
+    expect(lessonDurationLabel(t, 59)).toBe("59 s");
+    expect(lessonDurationLabel(t, 60)).toBe("1 min");
+  });
+
+  it("hands longer clips to runtimeLabel, so a lesson and a total agree", () => {
+    expect(lessonDurationLabel(t, 180)).toBe("3 min");
+    expect(lessonDurationLabel(t, 90 * 60)).toBe("1h 30m");
+    expect(lessonDurationLabel(t, 120 * 60)).toBe("2h");
+  });
+
+  it("rounds to the nearest second rather than away from it", () => {
+    expect(lessonDurationLabel(t, 0.4)).toBe("0 s");
+    expect(lessonDurationLabel(t, 0.6)).toBe("1 s");
+    expect(lessonDurationLabel(t, 59.6)).toBe("1 min");
+  });
+
+  it.each([[-5], [NaN], [Infinity]])("collapses %s to zero rather than printing nonsense", (bad) => {
+    expect(lessonDurationLabel(t, bad as number)).toBe("0 s");
   });
 });

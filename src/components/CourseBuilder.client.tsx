@@ -48,7 +48,7 @@ import {
 } from "../lib/api-learning-authoring";
 import { UploadCancelled, overweightVideo } from "../lib/resumable-upload";
 import { lessonNameFromFile } from "../lib/lessonNameFromFile";
-import { runtimeLabel } from "../lib/courseRuntime";
+import { lessonDurationLabel, runtimeLabel } from "../lib/courseRuntime";
 import { createQuiz } from "../lib/api-learning-quizzes";
 import {
   QuestionTypePicker,
@@ -958,6 +958,23 @@ function InlineText({
     // and this component re-renders on each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /*
+   * Follow the value when it changes from somewhere else.
+   *
+   * The draft used to be seeded once and never again, which was harmless while
+   * a title had exactly one field. A lesson's name is now editable in TWO
+   * places - its row and its dialog - so renaming it in one left the other
+   * showing the old name until the row remounted, which it does not: the list
+   * is keyed by lesson id and a refresh re-renders it in place.
+   *
+   * Guarded on focus. Resetting the draft under somebody's cursor would wipe
+   * what they are halfway through typing, and this component re-renders on
+   * every keystroke while a parent refresh is in flight.
+   */
+  useEffect(() => {
+    if (ref.current && document.activeElement === ref.current) return;
+    setDraft(value);
+  }, [value]);
   return (
     <input
       ref={ref}
@@ -1204,6 +1221,8 @@ function LessonRow({
   count,
   onChanged,
   selectTitleOnMount,
+  isNew,
+  onSettled,
   isLastFree,
   isFree,
   onSetBoundary,
@@ -1219,6 +1238,14 @@ function LessonRow({
   onChanged: () => Promise<void>;
   /** True for the first lesson a bulk drop just created. */
   selectTitleOnMount?: boolean;
+  /**
+   * This row was created by "Add a quiz" a moment ago and has not been kept
+   * yet: its dialog opens by itself and its footer offers Save and Cancel
+   * instead of Close and Remove. See the comment on that footer.
+   */
+  isNew?: boolean;
+  /** The row is no longer new: it was saved, cancelled, or closed. */
+  onSettled?: () => void;
   /** This lesson is the last free one: the line is drawn under it. */
   isLastFree?: boolean;
   /**
@@ -1323,6 +1350,21 @@ function LessonRow({
    */
   const [open, setOpen] = useState(false);
   /*
+   * A quiz that was just created opens itself.
+   *
+   * "Add a quiz" used to write a row called "New quiz" into the outline and
+   * stop there, so creating a quiz and then WRITING one were two separate
+   * discoveries: the author had to work out that the row they had just made
+   * was a thing you press. Opening it is the other half of the same action.
+   *
+   * Keyed on `isNew` rather than done on mount, because the row mounts after a
+   * refresh that re-reads the whole course - every row in the section mounts
+   * with it.
+   */
+  useEffect(() => {
+    if (isNew) setOpen(true);
+  }, [isNew]);
+  /*
    * A confirmation REPLACES the sheet that raised it, it does not sit on top.
    *
    * Two dialogs at once means two backdrops, so the sheet underneath dims to
@@ -1392,7 +1434,20 @@ function LessonRow({
    * downloadable file, and send them looking for a .vtt in the downloads list.
    */
   const attachments = lesson.media.filter((m) => m.kind !== "VIDEO" && m.kind !== "CAPTION");
-  const minutes = video?.durationSeconds ? Math.round(video.durationSeconds / 60) : null;
+  /*
+   * SECONDS, not minutes, and not rounded on the way in.
+   *
+   * This was `Math.round(durationSeconds / 60)`, so every clip under 30
+   * seconds came out as 0 and the row said "0 min" the moment its upload
+   * finished - which reads as an upload that failed, on the one pill an author
+   * comes back to the outline to check. `lessonDurationLabel` prints seconds
+   * below a minute and whole minutes above it.
+   *
+   * `|| null` rather than `?? null` on purpose: a stored 0 means the duration
+   * is not known (nothing we accept is genuinely zero seconds long), so it
+   * takes the "no video yet" branch below rather than printing "0 s".
+   */
+  const durationSeconds = video?.durationSeconds || null;
 
   return (
     <li
@@ -1446,7 +1501,9 @@ function LessonRow({
         * brand, which is not ours to spend on a state marker.
         */}
       <div
-        className={`group flex items-center gap-1 rounded-2xl bg-white pr-2 ring-1 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-16px_rgba(60,40,30,0.5)] active:translate-y-0 ${
+        /* `py-1.5` is new: the row's height used to come from the padding on
+           the full-width button that is now only the pills and the chevron. */
+        className={`group flex items-center gap-1 rounded-2xl bg-white py-1.5 pr-2 ring-1 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-16px_rgba(60,40,30,0.5)] active:translate-y-0 ${
           isFree
             ? "ring-zinc-200 shadow-[inset_3px_0_0_0_rgb(161,161,170)] hover:ring-zinc-300"
             : "ring-zinc-100/0 hover:ring-zinc-200"
@@ -1477,26 +1534,27 @@ function LessonRow({
           <GripVertical className="h-[18px] w-[18px] sm:h-[15px] sm:w-[15px]" aria-hidden="true" />
         </button>
 
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          /*
-           * One line, on every width.
-           *
-           * It used to stack on a phone - icon, then title, then a wrapped
-           * strip of pills - which made a row three lines tall and a list of
-           * six lessons a page of its own. Worse, a row is a single target
-           * that opens a dialog, and a three-line target does not read as one
-           * thing; the quiz row in particular came out as an icon, a title
-           * and a lone chevron on three separate lines.
-           *
-           * It fits because the title truncates and the secondary pills drop
-           * out below sm (see them), leaving icon + title + at most one pill
-           * + chevron.
-           */
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--button-radius,1rem)] border-none bg-transparent py-3 pr-3.5 text-left cursor-pointer sm:gap-3"
-          style={{ color: "var(--text-color)" }}
-        >
+        {/*
+          * ── The row is no longer ONE button ────────────────────────────
+          *
+          * It was: icon, title and pills all sat inside a single button that
+          * opened the lesson dialog, and renaming a lesson or a quiz meant
+          * opening that dialog to find the field. A module renames in place
+          * on the outline, so its two children renamed somewhere else - the
+          * one control that does the same job in all three places was the one
+          * that moved.
+          *
+          * An input cannot live inside a button (nested interactive content:
+          * the browser will not reliably focus it, and a screen reader reads
+          * the button's label over it), so the title had to come OUT of the
+          * button for it to be a field at all. What is left inside is the
+          * pills and the chevron - still a real target, still the last mark
+          * in the row, which is what makes it read as "this opens".
+          *
+          * The icon moves out with it. It is aria-hidden decoration either
+          * way, and it belongs beside the name it describes rather than
+          * inside the control next to it.
+          */}
           {/*
             * What kind of thing this row is, before its name.
             *
@@ -1518,10 +1576,60 @@ function LessonRow({
             {lesson.quizId ? <ListChecks size={14} /> : <Film size={14} />}
           </span>
 
-          <span className="w-full min-w-0 flex-1 truncate text-[13.5px] font-medium">
-            {lesson.title || t("lessonTitle")}
-          </span>
+        {/*
+          * The name, typeable where it is read.
+          *
+          * Same control and same treatment as a module's title one level up -
+          * a fill and a hairline AT REST, not on hover - so the thing that
+          * renames something looks identical at all three levels of the
+          * outline. zinc-50 rather than the module field's white, because the
+          * row underneath it is already white and a white box on white is not
+          * a field; it is the module header's relationship inverted, for the
+          * same reason.
+          *
+          * Smaller and only semibold: a lesson title is not a chapter
+          * heading, and it sits inside one.
+          */}
+        <InlineText
+          value={lesson.title}
+          /* A quiz's empty-name placeholder is the name it was created
+             with, which is already translated everywhere; a separate "Quiz
+             title" string would be a new key in 24 files saying the same
+             thing. */
+          placeholder={lesson.quizId ? t("newQuiz") : t("lessonTitle")}
+          onCommit={(title) => title && run(async () => {
+            await updateLesson(lesson.id, { title });
+            await onChanged();
+          })}
+          /* The first lesson a bulk drop created: its name came from a
+             filename, so it is a guess worth selecting. It used to focus the
+             field inside the dialog, which nobody had open. */
+          selectOnMount={selectTitleOnMount}
+          className="min-w-0 flex-1 rounded-xl bg-zinc-50 px-2.5 py-2 text-[13.5px] font-semibold ring-1 ring-zinc-200/80 transition-shadow hover:ring-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+        />
 
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={lesson.quizId ? t("editQuiz") : t("editLesson")}
+          /*
+           * One line, on every width.
+           *
+           * It used to stack on a phone - icon, then title, then a wrapped
+           * strip of pills - which made a row three lines tall and a list of
+           * six lessons a page of its own.
+           *
+           * It fits because the title field flexes and the secondary pills
+           * drop out below sm (see them), leaving icon + field + at most one
+           * pill + chevron.
+           *
+           * 44px tall on a phone: it is the control that opens the lesson and
+           * it no longer has the whole row's width to be found in, so it gets
+           * the height a thumb needs instead.
+           */
+          className="flex h-11 shrink-0 items-center gap-2.5 rounded-[var(--button-radius,1rem)] border-none bg-transparent px-1 text-left cursor-pointer sm:h-9 sm:gap-3"
+          style={{ color: "var(--text-color)" }}
+        >
           {/*
             * No wrapper of its own at any width: the pills are laid out by the
             * row. This used to be a flex box that wrapped them onto a second
@@ -1555,9 +1663,9 @@ function LessonRow({
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ background: "#fff4de", color: "#95681a" }}>
               {t("uploading")}
             </span>
-          ) : minutes !== null ? (
+          ) : durationSeconds !== null ? (
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold tabular-nums" style={{ background: "#eef4ff", color: "#3560bd" }}>
-              {runtimeLabel(t, minutes)}
+              {lessonDurationLabel(t, durationSeconds)}
             </span>
           ) : !video ? (
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold opacity-60" style={{ background: "rgba(128,128,128,0.12)" }}>
@@ -1747,7 +1855,11 @@ function LessonRow({
                       : tq("typeMultipleChoice")
                     : lesson.quizId ? t("editQuiz") : t("editLesson")
           }
-          onClose={() => { toRoot(); setOpen(false); }}
+          /* Closing with the X or Escape KEEPS a new quiz - only Cancel
+             discards it. Escape is pressed by reflex and destroying something
+             on it would be the worse failure of the two; an empty quiz left
+             in the outline is visible and one press from gone. */
+          onClose={() => { toRoot(); setOpen(false); onSettled?.(); }}
           /* Keyed by the step, and by WHICH question, so moving between two
              questions cross-fades rather than swapping the fields underneath
              a cursor that is already in one of them. */
@@ -1833,7 +1945,11 @@ function LessonRow({
                 await onChanged();
               })}
               className="w-full rounded-xl bg-white px-3 py-2.5 text-[14px] font-semibold ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-300"
-              selectOnMount={selectTitleOnMount}
+              /* The new quiz's name, selected: the sheet opens on the one
+                 field the author came to fill. A bulk drop's guessed filename
+                 is selected in the ROW's field now instead - that is where it
+                 is read, and nobody had this sheet open. */
+              selectOnMount={isNew}
             />
 
             {/* The row only OPENS the step; the editor itself is step 2. */}
@@ -1891,7 +2007,7 @@ function LessonRow({
                 <>
                   <span className="block truncate text-[12.5px] font-medium">{video.originalName}</span>
                   <span className="block text-[11px] text-zinc-500">
-                    {minutes !== null ? runtimeLabel(t, minutes) : t("videoNoDuration")}
+                    {durationSeconds !== null ? lessonDurationLabel(t, durationSeconds) : t("videoNoDuration")}
                   </span>
                 </>
               ) : (
@@ -2079,16 +2195,65 @@ function LessonRow({
               that should take a deliberate reach; putting it where the thumb
               rests on the way out is how somebody deletes a lesson they meant
               to close. */}
+          {/*
+            * ── Save and Cancel, but ONLY on a quiz that was just created ──
+            *
+            * Every field in this sheet commits on its own - a title on blur, a
+            * description from its own editor, a file when it finishes
+            * uploading - so there is nothing for a Save button to save, and on
+            * an existing lesson there is none. The footer is Close and Remove.
+            *
+            * A quiz created a second ago is the one case where the sheet is a
+            * DECISION rather than a visit. It has to exist before it opens -
+            * questions are written against a quiz id, so there is no drafting
+            * one that has not been created - which means the row is already in
+            * the outline behind this sheet. Closing it with nothing in it
+            * would leave an empty quiz called "New quiz" in the course,
+            * learners would be asked to sit it, and the author would have to
+            * work out that the way to undo "Add a quiz" is to delete a row.
+            *
+            * So Cancel means what it says: the quiz and its lesson go. Save
+            * keeps it. The title is already committed by the time either runs,
+            * because pressing a footer button blurs the field.
+            */}
           <ModalFooter>
-            <ModalButton onClick={() => setOpen(false)}>{t("close")}</ModalButton>
-            <ModalButton
-              tone="danger"
-              disabled={busy}
-              icon={<Trash2 size={14} aria-hidden="true" />}
-              onClick={askDelete}
-            >
-              {lesson.quizId ? t("removeQuiz") : t("removeLesson")}
-            </ModalButton>
+            {isNew ? (
+              <>
+                <ModalButton
+                  disabled={busy}
+                  onClick={() => void run(async () => {
+                    /* Created-then-cancelled: the lesson goes with the quiz.
+                       `createQuiz` was called on a lesson made for it, so the
+                       lesson has nothing else in it to keep. */
+                    setOpen(false);
+                    onSettled?.();
+                    await deleteLesson(lesson.id);
+                    await onChanged();
+                  })}
+                >
+                  {t("cancelNewQuiz")}
+                </ModalButton>
+                <ModalButton
+                  tone="primary"
+                  disabled={busy}
+                  onClick={() => { onSettled?.(); setOpen(false); }}
+                >
+                  {t("saveNewQuiz")}
+                </ModalButton>
+              </>
+            ) : (
+              <>
+                <ModalButton onClick={() => setOpen(false)}>{t("close")}</ModalButton>
+                <ModalButton
+                  tone="danger"
+                  disabled={busy}
+                  icon={<Trash2 size={14} aria-hidden="true" />}
+                  onClick={askDelete}
+                >
+                  {lesson.quizId ? t("removeQuiz") : t("removeLesson")}
+                </ModalButton>
+              </>
+            )}
           </ModalFooter>
           </>
           )}
@@ -2675,6 +2840,35 @@ export function CourseBuilder({
   const bulk = useBulkUpload(refresh);
 
   /*
+   * The quiz "Add a quiz" just made, which has not been kept or cancelled yet.
+   *
+   * It has to be created before its sheet can open - questions are written
+   * against a quiz id - so the row exists while the author is still deciding
+   * whether to have it. This id is what tells that row to open itself and to
+   * offer Save and Cancel instead of Close and Remove; see LessonRow's footer.
+   */
+  const [newQuizLessonId, setNewQuizLessonId] = useState<string | null>(null);
+
+  /**
+   * Create the lesson that carries a quiz, its quiz, and open it.
+   *
+   * Takes a RESOLVER rather than a section id so the empty-state card - which
+   * has to write module 1 before it has anywhere to put a quiz - runs inside
+   * the same `run`, and the page is busy for the whole of it rather than
+   * flickering back to idle between the two writes.
+   */
+  const addQuiz = useCallback(
+    (resolveSectionId: () => Promise<string>) => run(async () => {
+      const sectionId = await resolveSectionId();
+      const created = await createLesson(sectionId, { title: t("newQuiz") });
+      await createQuiz(created.id, {});
+      await refresh();
+      setNewQuizLessonId(created.id);
+    }),
+    [run, refresh, t],
+  );
+
+  /*
    * ── What counts as a syllabus ──────────────────────────────────────────
    *
    * One lesson with a video in it. Not "a section exists", not "a quiz
@@ -3077,12 +3271,7 @@ export function CourseBuilder({
               hint={t("addQuizHint")}
               disabled={busy}
               busy={busy}
-              onClick={() => run(async () => {
-                const sectionId = await materialiseFirstSection();
-                const created = await createLesson(sectionId, { title: t("newQuiz") });
-                await createQuiz(created.id, {});
-                await refresh();
-              })}
+              onClick={() => void addQuiz(() => materialiseFirstSection())}
             />
           </div>
         </div>
@@ -3337,6 +3526,8 @@ export function CourseBuilder({
                     count={section.lessons.length}
                     onChanged={refresh}
                     selectTitleOnMount={lesson.id === bulk.firstCreatedId}
+                    isNew={lesson.id === newQuizLessonId}
+                    onSettled={() => setNewQuizLessonId(null)}
                     isLastFree={lesson.id === previewDrag.effectiveId}
                     /*
                      * Free-ness comes from the DRAG, not from the row's saved
@@ -3395,11 +3586,7 @@ export function CourseBuilder({
               hint={t("addQuizHint")}
               disabled={busy}
               busy={busy}
-              onClick={() => run(async () => {
-                const created = await createLesson(section.id, { title: t("newQuiz") });
-                await createQuiz(created.id, {});
-                await refresh();
-              })}
+              onClick={() => void addQuiz(async () => section.id)}
             />
           </div>
 
