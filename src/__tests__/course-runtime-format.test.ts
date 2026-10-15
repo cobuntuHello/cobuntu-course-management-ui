@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitRuntime, runtimeLabel, runtimeLabelFromSeconds, lessonDurationLabel } from "../lib/courseRuntime";
+import { splitRuntime, runtimeLabel, runtimeLabelFromSeconds, durationLabel } from "../lib/courseRuntime";
 
 /**
  * How long a course is, written the way a person would say it.
@@ -93,7 +93,7 @@ describe("runtimeLabel", () => {
   });
 });
 
-describe("lessonDurationLabel", () => {
+describe("durationLabel", () => {
   /*
    * REPORTED from the builder: a lesson whose video had just finished
    * uploading showed "0 min". The row rounded seconds to whole minutes, so
@@ -107,27 +107,27 @@ describe("lessonDurationLabel", () => {
     [45, "45 s"],
     [59, "59 s"],
   ])("writes %is as %s rather than rounding it to minutes", (seconds, label) => {
-    expect(lessonDurationLabel(t, seconds)).toBe(label);
+    expect(durationLabel(t, seconds)).toBe(label);
   });
 
   it("switches to minutes at exactly a minute, not before", () => {
-    expect(lessonDurationLabel(t, 59)).toBe("59 s");
-    expect(lessonDurationLabel(t, 60)).toBe("1 min");
+    expect(durationLabel(t, 59)).toBe("59 s");
+    expect(durationLabel(t, 60)).toBe("1 min");
   });
 
   it("hands longer clips to runtimeLabel, so a lesson and a total agree", () => {
-    expect(lessonDurationLabel(t, 180)).toBe("3 min");
-    expect(lessonDurationLabel(t, 90 * 60)).toBe("1h 30m");
-    expect(lessonDurationLabel(t, 120 * 60)).toBe("2h");
+    expect(durationLabel(t, 180)).toBe("3 min");
+    expect(durationLabel(t, 90 * 60)).toBe("1h 30m");
+    expect(durationLabel(t, 120 * 60)).toBe("2h");
   });
 
   it("rounds to the nearest second rather than away from it", () => {
-    expect(lessonDurationLabel(t, 0.4)).toBe("0 s");
-    expect(lessonDurationLabel(t, 0.6)).toBe("1 s");
-    expect(lessonDurationLabel(t, 59.6)).toBe("1 min");
+    expect(durationLabel(t, 0.4)).toBe("0 s");
+    expect(durationLabel(t, 0.6)).toBe("1 s");
+    expect(durationLabel(t, 59.6)).toBe("1 min");
   });
 
   it.each([[-5], [NaN], [Infinity]])("collapses %s to zero rather than printing nonsense", (bad) => {
-    expect(lessonDurationLabel(t, bad as number)).toBe("0 s");
+    expect(durationLabel(t, bad as number)).toBe("0 s");
   });
 });

@@ -261,6 +261,35 @@ describe("how long a lesson is", () => {
   });
 });
 
+describe("the course's Runtime stat", () => {
+  /* Same rounding bug as the row's, one level up: the summary did
+     Math.round(seconds / 60) at the SOURCE, so a course that was so far one
+     short clip reported "0 min" about itself. */
+  function stats() {
+    return within(screen.getByText("Runtime").closest("div") as HTMLElement);
+  }
+
+  it("is written in seconds while the course is under a minute", async () => {
+    await mount([section([lesson({ media: [video(10)] })])]);
+    expect(stats().getByText("10 s")).toBeTruthy();
+  });
+
+  it("adds the clips up before deciding the scale", async () => {
+    await mount([section([
+      lesson({ id: "l1", title: "One", media: [video(40)] }),
+      lesson({ id: "l2", title: "Two", order: 1, media: [video(50)] }),
+    ])]);
+    /* 90s is over the minute, so it reads as minutes even though neither
+       clip would on its own. */
+    expect(stats().getByText("2 min")).toBeTruthy();
+  });
+
+  it("still says zero when there is nothing to watch", async () => {
+    await mount([section([lesson()])]);
+    expect(stats().getByText("0 s")).toBeTruthy();
+  });
+});
+
 describe("adding a quiz", () => {
   /**
    * Press "Add a quiz" with a server that returns the row afterwards.

@@ -48,7 +48,7 @@ import {
 } from "../lib/api-learning-authoring";
 import { UploadCancelled, overweightVideo } from "../lib/resumable-upload";
 import { lessonNameFromFile } from "../lib/lessonNameFromFile";
-import { lessonDurationLabel, runtimeLabel } from "../lib/courseRuntime";
+import { durationLabel } from "../lib/courseRuntime";
 import { createQuiz } from "../lib/api-learning-quizzes";
 import {
   QuestionTypePicker,
@@ -1461,7 +1461,7 @@ function LessonRow({
    * This was `Math.round(durationSeconds / 60)`, so every clip under 30
    * seconds came out as 0 and the row said "0 min" the moment its upload
    * finished - which reads as an upload that failed, on the one pill an author
-   * comes back to the outline to check. `lessonDurationLabel` prints seconds
+   * comes back to the outline to check. `durationLabel` prints seconds
    * below a minute and whole minutes above it.
    *
    * `|| null` rather than `?? null` on purpose: a stored 0 means the duration
@@ -1694,7 +1694,7 @@ function LessonRow({
             </span>
           ) : durationSeconds !== null ? (
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold tabular-nums" style={{ background: "#eef4ff", color: "#3560bd" }}>
-              {lessonDurationLabel(t, durationSeconds)}
+              {durationLabel(t, durationSeconds)}
             </span>
           ) : !video ? (
             <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold opacity-60" style={{ background: "rgba(128,128,128,0.12)" }}>
@@ -1934,7 +1934,7 @@ function LessonRow({
                 <>
                   <span className="block truncate text-[12.5px] font-medium">{video.originalName}</span>
                   <span className="block text-[11px] text-zinc-500">
-                    {durationSeconds !== null ? lessonDurationLabel(t, durationSeconds) : t("videoNoDuration")}
+                    {durationSeconds !== null ? durationLabel(t, durationSeconds) : t("videoNoDuration")}
                   </span>
                 </>
               ) : (
@@ -2253,7 +2253,7 @@ function LessonRow({
  */
 function PreviewPanel({
   previews,
-  minutes,
+  seconds,
   lastFreeTitle,
   hasLessons,
   busy,
@@ -2262,7 +2262,8 @@ function PreviewPanel({
   onRemove,
 }: {
   previews: number;
-  minutes: number;
+  /** The free part's length in SECONDS - formatted here, not by the caller. */
+  seconds: number;
   lastFreeTitle: string | null;
   hasLessons: boolean;
   busy: boolean;
@@ -2295,7 +2296,7 @@ function PreviewPanel({
           className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
           style={{ background: "rgba(128,128,128,0.12)", color: "#71717a" }}
         >
-          {set ? t("previewPanelCount", { lessons: previews, runtime: runtimeLabel(t, minutes) }) : t("previewPanelNotSet")}
+          {set ? t("previewPanelCount", { lessons: previews, runtime: durationLabel(t, seconds) }) : t("previewPanelNotSet")}
         </span>
       </div>
 
@@ -2925,11 +2926,21 @@ export function CourseBuilder({
         }
       }
     }
+    /*
+     * SECONDS out, not minutes.
+     *
+     * This used to round here - `Math.round(seconds / 60)` - which threw the
+     * only information a short course has away before anything could format
+     * it: a course of one ten-second clip reported "0 min" in its Runtime stat
+     * and "0 min" in its free-preview panel. Same rounding, same place, as the
+     * lesson row's "0 min". Rounding is the formatter's job and `durationLabel`
+     * does it at the right scale.
+     */
     return {
       lessons,
-      minutes: Math.round(seconds / 60),
+      seconds,
       previews,
-      previewMinutes: Math.round(previewSeconds / 60),
+      previewSeconds,
       quizzes,
     };
   }, [sections]);
@@ -3070,7 +3081,7 @@ export function CourseBuilder({
         <dl className="m-0 grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-zinc-100 sm:grid-cols-4">
           {[
             { key: "lessons", value: summary.lessons, label: t("statLessons") },
-            { key: "minutes", value: runtimeLabel(t, summary.minutes), zero: summary.minutes === 0, label: t("statRuntime") },
+            { key: "minutes", value: durationLabel(t, summary.seconds), zero: summary.seconds === 0, label: t("statRuntime") },
             { key: "previews", value: summary.previews, label: t("statFreePreviews") },
             { key: "quizzes", value: summary.quizzes, label: t("statQuizzes") },
           ].map((stat) => (
@@ -3102,7 +3113,7 @@ export function CourseBuilder({
       {loaded && sections.length > 0 && (
         <PreviewPanel
           previews={summary.previews}
-          minutes={summary.previewMinutes}
+          seconds={summary.previewSeconds}
           lastFreeTitle={previewTargets.lastFreeTitle}
           hasLessons={summary.lessons > 0}
           busy={busy}
