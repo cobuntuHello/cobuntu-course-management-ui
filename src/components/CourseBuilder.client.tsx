@@ -30,6 +30,7 @@ import { richTextIsEmpty } from "../lib/richTextIsEmpty";
 import { isVideoFile } from "../lib/isVideoFile";
 import type { CourseLesson, CourseLessonMedia, CourseSection } from "../lib/api-learning";
 import { getCourseContentClient } from "../lib/api-learning";
+import { ApiError } from "../lib/api";
 import {
   createLesson,
   createSection,
@@ -2827,6 +2828,16 @@ export function CourseBuilder({
    */
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  /**
+   * A 404 here means something specific and nameable: the community cannot
+   * read this course's syllabus at all (most often, Learning is not rolled
+   * out there yet — see resolveLearningCommunity on the backend). That is a
+   * different message than "the request failed, try again" — retrying a 404
+   * forever does nothing, and the vague version left someone staring at a
+   * generic error for a quite ordinary case: an admin opening /learning/new
+   * for a community that was never onboarded onto Learning.
+   */
+  const [loadErrorIsUnavailable, setLoadErrorIsUnavailable] = useState(false);
 
   /**
    * The first read, on mount.
@@ -2843,7 +2854,7 @@ export function CourseBuilder({
       try {
         const fetched = await getCourseContentClient(communityTag, productId);
         if (alive) { setSections(fetched); setLoaded(true); }
-      } catch {
+      } catch (err) {
         /*
          * Deliberately NOT `setLoaded(true)` in a finally. A failed read knows
          * nothing about what the course holds, and the empty state is the one
@@ -2851,7 +2862,10 @@ export function CourseBuilder({
          * could not load than one that invites somebody to rebuild an outline
          * that is already there.
          */
-        if (alive) setLoadError(true);
+        if (alive) {
+          setLoadError(true);
+          setLoadErrorIsUnavailable(err instanceof ApiError && err.status === 404);
+        }
       }
     })();
     return () => { alive = false; };
@@ -3158,7 +3172,7 @@ export function CourseBuilder({
 
       {loadError && (
         <p className="text-[13px] m-0" style={{ color: "#b91c1c" }}>
-          {t("loadFailed")}
+          {loadErrorIsUnavailable ? t("notAvailable") : t("loadFailed")}
         </p>
       )}
 

@@ -687,7 +687,8 @@
       "runtimeMinutes": "{minutes} min",
       "runtimeHours": "{hours}h",
       "runtimeHoursMinutes": "{hours}h {minutes}m",
-      "runtimeSeconds": "{seconds} s"
+      "runtimeSeconds": "{seconds} s",
+      "notAvailable": "Courses aren't available for this community yet."
     },
     "details": {
       "taughtBy": "Taught by",
