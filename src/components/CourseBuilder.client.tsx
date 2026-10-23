@@ -24,9 +24,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AddCard, BuilderModal, ChoiceCard, ConfirmModal, ModalButton, ModalFooter } from "./BuilderModal.client";
-import { RichTextEditor } from "@cobuntu/product-management-ui";
-import { sanitizeRichDescription } from "../lib/sanitize-rich-text";
-import { richTextIsEmpty } from "../lib/richTextIsEmpty";
+import { MarkdownEditor } from "@cobuntu/product-management-ui";
+import { markdownIsEmpty } from "../lib/markdownIsEmpty";
 import { isVideoFile } from "../lib/isVideoFile";
 import type { CourseLesson, CourseLessonMedia, CourseSection } from "../lib/api-learning";
 import { getCourseContentClient } from "../lib/api-learning";
@@ -1032,19 +1031,14 @@ export function DescriptionEditor({
   return (
     <>
       {/*
-        * Fills whatever the sheet has left, rather than sitting at its own
-        * 250px and leaving the rest of a fixed-height panel blank under it.
-        *
-        * RichTextEditor takes no className - it renders a `.rich-text-editor`
-        * wrapper around Quill, whose own CSS sets `min-height: 250px` on the
-        * container and the editing surface. So the chain of `flex-1` has to be
-        * pushed down through it from here with arbitrary variants: wrapper,
-        * then Quill's container, then the editable area. `min-h-0` at each
-        * level or the 250px floor wins and the box overflows instead of
-        * scrolling inside itself.
+        * MarkdownEditor auto-grows to its own content instead of filling
+        * whatever a flex parent has left (Quill's old min-height/flex-chain
+        * hack is gone with it), so it just needs a generous floor here
+        * rather than the wrapper's worth of arbitrary-variant plumbing the
+        * Quill version needed.
         */}
-      <div className="flex min-h-0 flex-1 flex-col [&_.ql-container]:min-h-0 [&_.ql-container]:flex-1 [&_.ql-editor]:min-h-0 [&_.rich-text-editor]:flex [&_.rich-text-editor]:min-h-0 [&_.rich-text-editor]:flex-1 [&_.rich-text-editor]:flex-col">
-        <RichTextEditor content={draft} onChange={setDraft} placeholder={placeholder} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <MarkdownEditor value={draft} onChange={setDraft} placeholder={placeholder} minRows={10} />
       </div>
       {/*
         * Right-aligned, and each button only as wide as its own word. Save was
@@ -1058,10 +1052,8 @@ export function DescriptionEditor({
           tone="primary"
           disabled={disabled}
           onClick={() => {
-            // Quill's empty document is "<p><br></p>", not "" - see
-            // richTextIsEmpty for why that has to be normalised to null.
-            const html = draft.trim();
-            onSave(richTextIsEmpty(html) ? null : html);
+            const markdown = draft.trim();
+            onSave(markdownIsEmpty(markdown) ? null : markdown);
           }}
         >
           {t("saveDescription")}
