@@ -146,6 +146,7 @@ export function BuilderModal({
   onClose,
   stepKey,
   hideClose,
+  closeLabel,
   children,
 }: {
   title: string;
@@ -192,6 +193,8 @@ export function BuilderModal({
    * instead), so this only removes something on desktop.
    */
   hideClose?: boolean;
+  /** Aria label for the desktop close X. Defaults to "Close" (BottomSheet's own default). */
+  closeLabel?: string;
   children: ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
@@ -202,6 +205,7 @@ export function BuilderModal({
       onClose={onClose}
       ariaLabel={title}
       showDesktopClose={!hideClose}
+      closeLabel={closeLabel}
       /*
        * A height ceiling plus `flex flex-col`, because the body below scrolls
        * inside the panel. Without the ceiling a lesson with eight attachments

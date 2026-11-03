@@ -63,6 +63,8 @@ interface Props {
    * are unchanged.
    */
   showDesktopClose?: boolean;
+  /** Aria label for the desktop close button above. Defaults to "Close". */
+  closeLabel?: string;
   /**
    * Drop the panel's hairline outline.
    *
@@ -100,7 +102,7 @@ function useIsMobile(): boolean | null {
   return isMobile;
 }
 
-export function BottomSheet({ open, onClose, ariaLabel, hideGrabber, panelClassName = "sm:max-w-md", showDesktopClose, hideBorder, onClosed, children }: Props) {
+export function BottomSheet({ open, onClose, ariaLabel, hideGrabber, panelClassName = "sm:max-w-md", showDesktopClose, closeLabel = "Close", hideBorder, onClosed, children }: Props) {
   const isMobile = useIsMobile();
 
   // Escape-to-close — every modal pattern in the app honours this.
@@ -201,7 +203,7 @@ export function BottomSheet({ open, onClose, ariaLabel, hideGrabber, panelClassN
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={closeLabel}
                 className="absolute right-3 top-3 z-10 hidden h-8 w-8 cursor-pointer items-center justify-center rounded-full sm:flex"
                 style={{
                   background: "var(--bg-color)",
