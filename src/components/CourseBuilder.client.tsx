@@ -1117,7 +1117,7 @@ function DescriptionField({
    * was left inside a nested lesson panel.
    */
   return (
-    <BuilderModal title={modalTitle} onClose={() => setEditing(false)}>
+    <BuilderModal title={modalTitle} onClose={() => setEditing(false)} closeLabel={t("close")}>
       <DescriptionEditor
         value={value}
         placeholder={placeholder}
@@ -1819,6 +1819,7 @@ function LessonRow({
              three centimetres away discards the sheet entirely - two controls
              that look alike, one step apart, doing opposite things. */
           hideClose={step.k === "description"}
+          closeLabel={t("close")}
           /*
            * Step 2 is the description. Same sheet, swapped contents - rather
            * than a dialog stacked on a dialog (two backdrops, two Escapes) or
