@@ -59,6 +59,7 @@ import {
   useCreateQuestion,
   useQuizAuthoring,
 } from "./QuizEditor.client";
+import { useBusy, WriteFailureProvider } from "../lib/useBusy";
 
 /**
  * The course builder.
@@ -83,18 +84,6 @@ import {
  * move sends the entire id list.
  */
 
-function useBusy() {
-  const [busy, setBusy] = useState(false);
-  const run = useCallback(async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-  return { busy, run };
-}
 
 function move<T>(items: T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return items;
@@ -2111,6 +2100,7 @@ function LessonRow({
                 body={uploadError}
               />
             )}
+
             {uploadWarning && (
               <UploadNotice
                 tone="caution"
@@ -2786,7 +2776,15 @@ export function CourseBuilder({
 }) {
   const t = useTranslations("learning.builder");
   const [sections, setSections] = useState(initialSections);
-  const { busy, run } = useBusy();
+  const { busy, error: ownError, run } = useBusy();
+  /*
+   * A failure from a DESCENDANT -- a lesson row, or the quiz hook inside one.
+   * They each have their own useBusy and their own local `error`, but a row's
+   * detail area is collapsed most of the time, so reporting there would hide
+   * the notice exactly when the author needs it. See WriteFailureProvider.
+   */
+  const [descendantError, setDescendantError] = useState<string | null>(null);
+  const saveError = ownError ?? descendantError;
 
   /*
    * One re-read for the whole page after any write. Deliberately not a
@@ -2795,6 +2793,9 @@ export function CourseBuilder({
    * touched.
    */
   const refresh = useCallback(async () => {
+    // A re-read only follows a write that landed, so any earlier failure on
+    // screen is now stale and contradicts what the author is looking at.
+    setDescendantError(null);
     setSections(await getCourseContentClient(communityTag, productId));
   }, [communityTag, productId]);
 
@@ -3138,7 +3139,33 @@ export function CourseBuilder({
   };
 
   return (
+    <WriteFailureProvider onFailure={setDescendantError}>
     <div className="flex flex-col gap-8">
+      {/*
+        * A failed write, said out loud (T-101).
+        *
+        * Every write on this level -- add a module, rename one, reorder, delete
+        * -- used to fail silently: useBusy had no catch, so the spinner stopped
+        * and the outline looked saved while the server had nothing. It sits at
+        * the TOP of the builder rather than beside whichever control was
+        * pressed, because by the time it renders the author has usually moved
+        * on, and because one notice is easier to trust than four.
+        *
+        * aria-live, since nothing was pressed to make it appear from the
+        * screen-reader's point of view: the press was the save that then came
+        * back empty.
+        */}
+      {saveError && (
+        <div aria-live="assertive">
+          <UploadNotice
+            tone="problem"
+            icon={<AlertCircle size={16} strokeWidth={1.9} />}
+            title={t("saveFailedTitle")}
+            body={saveError}
+          />
+        </div>
+      )}
+
       {/* A live region: the bulk upload's progress is the one thing on this
           page that changes without anybody pressing anything. */}
       <div aria-live="polite" className="sr-only">
@@ -3700,5 +3727,6 @@ export function CourseBuilder({
         />
       )}
     </div>
+    </WriteFailureProvider>
   );
 }

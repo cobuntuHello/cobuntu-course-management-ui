@@ -688,7 +688,8 @@
       "runtimeHours": "{hours}h",
       "runtimeHoursMinutes": "{hours}h {minutes}m",
       "runtimeSeconds": "{seconds} s",
-      "notAvailable": "Courses aren't available for this community yet."
+      "notAvailable": "Courses aren't available for this community yet.",
+      "saveFailedTitle": "That change was not saved"
     },
     "details": {
       "taughtBy": "Taught by",

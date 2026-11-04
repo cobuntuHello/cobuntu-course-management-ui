@@ -42,6 +42,7 @@ import {
   type QuizAuthored,
   type QuizQuestionAuthored,
 } from "../lib/api-learning-quizzes";
+import { useBusy } from "../lib/useBusy";
 
 /**
  * Writing a quiz.
@@ -83,18 +84,6 @@ import {
 
 /* ────────────────────────────── plumbing ────────────────────────────── */
 
-function useBusy() {
-  const [busy, setBusy] = useState(false);
-  const run = useCallback(async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-  return { busy, run };
-}
 
 function move<T>(items: T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return items;
@@ -113,7 +102,7 @@ function move<T>(items: T[], from: number, to: number): T[] {
  */
 export function useQuizAuthoring(quizId: string | null) {
   const [quiz, setQuiz] = useState<QuizAuthored | null>(null);
-  const { busy, run } = useBusy();
+  const { busy, error, run } = useBusy();
   // Takes a nullable id so the lesson dialog can call it unconditionally: a
   // lesson and a quiz are the same row and the same dialog, and a hook cannot
   // be called behind an `if`.
@@ -124,7 +113,13 @@ export function useQuizAuthoring(quizId: string | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  return { quiz, refresh, busy, run };
+  /*
+   * `error` rides along because a quiz write that failed used to leave the
+   * editor looking saved (T-101) -- useBusy had no catch, so the author went on
+   * editing questions the server never took. The hook cannot render it: it is
+   * called by the lesson dialog, which owns the surface.
+   */
+  return { quiz, refresh, busy, error, run };
 }
 
 /* ─────────────────────────── question types ─────────────────────────── */
@@ -359,7 +354,7 @@ export function QuizPanel({
 }: {
   quiz: QuizAuthored;
   busy: boolean;
-  run: (fn: () => Promise<unknown>) => Promise<void>;
+  run: (fn: () => Promise<unknown>) => Promise<boolean>;
   refresh: () => Promise<void>;
   onAddQuestion: () => void;
   onOpenQuestion: (id: string) => void;
@@ -518,7 +513,7 @@ export function QuestionEditor({
 }: {
   question: QuizQuestionAuthored;
   busy: boolean;
-  run: (fn: () => Promise<unknown>) => Promise<void>;
+  run: (fn: () => Promise<unknown>) => Promise<boolean>;
   refresh: () => Promise<void>;
   onBack: () => void;
 }) {
@@ -713,7 +708,7 @@ export function QuizMarkingEditor({
 }: {
   quiz: QuizAuthored;
   busy: boolean;
-  run: (fn: () => Promise<unknown>) => Promise<void>;
+  run: (fn: () => Promise<unknown>) => Promise<boolean>;
   refresh: () => Promise<void>;
   onBack: () => void;
 }) {
