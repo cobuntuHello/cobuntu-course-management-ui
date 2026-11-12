@@ -26,7 +26,7 @@ describe("DescriptionEditor (course builder)", () => {
     renderEditor();
     const save = screen.getByRole("button", { name: "Save" });
     const row = save.parentElement!.parentElement!;
-    expect(row.textContent).toContain("9 / 2000");
+    expect(row.textContent).toContain("9 / 1000");
     expect(row.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
   });
 
