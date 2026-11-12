@@ -48,3 +48,11 @@ describe("DescriptionEditor (course builder)", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 });
+
+describe("plainSnippet (the description row's preview)", () => {
+  it("shows a mention as @Name and drops an image", async () => {
+    const { plainSnippet } = await import("../components/CourseBuilder.client");
+    expect(plainSnippet("Meet @[Stella Marie Viereck](user:bb05b515_x).\n![](https://x.test/a.png)\nBring water."))
+      .toBe("Meet @Stella Marie Viereck. Bring water.");
+  });
+});

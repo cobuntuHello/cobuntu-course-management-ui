@@ -25,6 +25,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { AddCard, BuilderModal, ChoiceCard, ConfirmModal, ModalButton, ModalFooter } from "./BuilderModal.client";
 import { MarkdownEditor } from "@cobuntu/product-management-ui";
+import { richTextToPlain } from "@cobuntu/management-ui-shared";
 import { markdownIsEmpty } from "../lib/markdownIsEmpty";
 import { isVideoFile } from "../lib/isVideoFile";
 import type { CourseLesson, CourseLessonMedia, CourseSection } from "../lib/api-learning";
@@ -868,8 +869,10 @@ function SettingRow({
  * through a DOM parse: this runs for every section and lesson on every render,
  * and it must not depend on `document` when the page renders on the server.
  */
-function plainSnippet(html: string, max = 90): string {
-  const text = html
+export function plainSnippet(html: string, max = 90): string {
+  // Descriptions are markdown now: a mention reads as @Name and an image
+  // disappears, rather than their stored syntax.
+  const text = richTextToPlain(html)
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&amp;/gi, "&")
