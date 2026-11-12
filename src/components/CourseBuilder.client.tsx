@@ -1018,37 +1018,39 @@ export function DescriptionEditor({
   const t = useTranslations("learning.builder");
   const [draft, setDraft] = useState(value ?? "");
   return (
-    <>
-      {/*
-        * MarkdownEditor auto-grows to its own content instead of filling
-        * whatever a flex parent has left (Quill's old min-height/flex-chain
-        * hack is gone with it), so it just needs a generous floor here
-        * rather than the wrapper's worth of arbitrary-variant plumbing the
-        * Quill version needed.
-        */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <MarkdownEditor value={draft} onChange={setDraft} placeholder={placeholder} minRows={10} />
-      </div>
-      {/*
-        * Right-aligned, and each button only as wide as its own word. Save was
-        * `flex-1`, so in a 520px dialog it became a 600px-wide bar next to a
-        * small Cancel - a button whose size says "this is the only thing on
-        * the screen" for an action that is one of two.
-        */}
-      <ModalFooter>
-        <ModalButton onClick={onCancel}>{cancelLabel ?? t("cancelDescription")}</ModalButton>
-        <ModalButton
-          tone="primary"
-          disabled={disabled}
-          onClick={() => {
-            const markdown = draft.trim();
-            onSave(markdownIsEmpty(markdown) ? null : markdown);
-          }}
-        >
-          {t("saveDescription")}
-        </ModalButton>
-      </ModalFooter>
-    </>
+    /*
+      * The editor FILLS the sheet (MarkdownEditor `fill`): growing only to its
+      * ~200px cap left the rest of the sheet empty. The buttons ride in the
+      * editor's own bottom row (`actions`), next to Add image and the
+      * counter, so the sheet has one row under the text instead of two -
+      * the same layout as the event and product description dialogs.
+      *
+      * Buttons stay right-aligned and each only as wide as its own word.
+      * Save was `flex-1` once, which made a 600px bar of one of two actions.
+      */
+    <div className="flex min-h-[min(52vh,420px)] flex-1 flex-col pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <MarkdownEditor
+        fill
+        value={draft}
+        onChange={setDraft}
+        placeholder={placeholder}
+        actions={
+          <>
+            <ModalButton onClick={onCancel}>{cancelLabel ?? t("cancelDescription")}</ModalButton>
+            <ModalButton
+              tone="primary"
+              disabled={disabled}
+              onClick={() => {
+                const markdown = draft.trim();
+                onSave(markdownIsEmpty(markdown) ? null : markdown);
+              }}
+            >
+              {t("saveDescription")}
+            </ModalButton>
+          </>
+        }
+      />
+    </div>
   );
 }
 
