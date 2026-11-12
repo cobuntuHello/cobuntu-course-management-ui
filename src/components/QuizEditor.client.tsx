@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSaveWhileTyping } from "../lib/useSaveWhileTyping";
 import { useTranslations } from "next-intl";
 import {
   CircleDot,
@@ -161,7 +162,15 @@ const KIND_ICON: Record<QuestionKind, typeof CircleDot> = {
 
 /* ──────────────────────────── shared bits ──────────────────────────── */
 
-/** A field that keeps its own draft and commits when you leave it. */
+/**
+ * A field that keeps its own draft and saves it while you write: a moment after
+ * typing stops, when you leave it, and when the dialog closes on it (see
+ * useSaveWhileTyping). It used to save on blur only, so closing the dialog
+ * with Esc or a swipe while still in the field lost the last edit.
+ *
+ * Esc no longer reverts the field. It also closes the dialog, and "Esc threw
+ * away what I typed" was exactly the complaint.
+ */
 function InlineText({
   value,
   placeholder,
@@ -171,14 +180,49 @@ function InlineText({
 }: {
   value: string;
   placeholder: string;
-  onCommit: (next: string) => void;
+  onCommit: (next: string) => Promise<unknown> | void;
   className?: string;
   multiline?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    if (draft !== value) onCommit(draft.trim());
+  /** The draft as of the last keystroke, for the timer and unmount paths. */
+  const draftRef = useRef(value);
+  /** What the server has, as far as this field knows: sent or received. */
+  const sentRef = useRef(value.trim());
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
+
+  /*
+   * Adopt the server's value only when it cannot overwrite typing. A save
+   * re-reads the quiz, and that re-read can land while the author is still
+   * writing: adopting it then would replace newer text with the older text
+   * just saved. So the server wins only when nothing is unsent, and our own
+   * (trimmed) text coming back is not a change at all - replacing "word " with
+   * "word" mid-sentence would glue the next word on.
+   */
+  useEffect(() => {
+    const local = draftRef.current.trim();
+    if (local === value) {
+      sentRef.current = value;
+      return;
+    }
+    if (local !== sentRef.current) return; // unsent typing wins; it saves next
+    draftRef.current = value;
+    sentRef.current = value;
+    setDraft(value);
+  }, [value]);
+
+  const { schedule, flush } = useSaveWhileTyping(() => {
+    const next = draftRef.current.trim();
+    if (next === sentRef.current) return null;
+    sentRef.current = next;
+    return () => onCommitRef.current(next);
+  });
+
+  const onChange = (next: string) => {
+    draftRef.current = next;
+    setDraft(next);
+    schedule();
   };
   const shared = `w-full bg-transparent border-none outline-none ${className ?? ""}`;
   if (multiline) {
@@ -187,8 +231,8 @@ function InlineText({
         rows={3}
         value={draft}
         placeholder={placeholder}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={flush}
         className={`${shared} resize-none`}
         style={{ color: "var(--text-color)" }}
       />
@@ -199,11 +243,10 @@ function InlineText({
       type="text"
       value={draft}
       placeholder={placeholder}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={flush}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") setDraft(value);
       }}
       className={shared}
       style={{ color: "var(--text-color)" }}
@@ -504,6 +547,34 @@ export function QuestionTypePicker({
 
 /* ────────────────────── step: one question, alone ────────────────────── */
 
+type AuthoredOption = QuizQuestionAuthored["options"][number];
+
+/**
+ * An answer as the editor holds it. `rowId` is the row's React identity: the
+ * server id once there is one, a local id before. It is carried over when the
+ * server answers, so a new answer receiving its id does not remount the input
+ * (and drop the cursor) while the author is mid-word.
+ */
+type DraftOption = AuthoredOption & { rowId: string };
+
+let rowSeq = 0;
+const nextRowId = () => `new-${++rowSeq}`;
+
+/** Server answers as rows, reusing the identities of the rows already shown. */
+function withRowIds(options: AuthoredOption[], previous: DraftOption[] = []): DraftOption[] {
+  return options.map((o, i) => ({ ...o, rowId: previous[i]?.rowId ?? (o.id || nextRowId()) }));
+}
+
+/** A just-added answer nobody has written or picked yet. It is never sent. */
+function isPlaceholder(o: { id?: string; label: string; isCorrect: boolean }): boolean {
+  return !o.id && !o.label.trim() && !o.isCorrect;
+}
+
+/** What makes two answer sets the same to the server: trimmed labels + the right one. */
+function answerSetKey(options: { id?: string; label: string; isCorrect: boolean }[]): string {
+  return JSON.stringify(options.filter((o) => !isPlaceholder(o)).map((o) => [o.label.trim(), o.isCorrect]));
+}
+
 export function QuestionEditor({
   question,
   busy,
@@ -518,10 +589,39 @@ export function QuestionEditor({
   onBack: () => void;
 }) {
   const t = useTranslations("learning.quiz");
-  const [options, setOptions] = useState(question.options.map((o) => ({ ...o })));
+  const [options, setOptionsState] = useState<DraftOption[]>(() => withRowIds(question.options));
+  /** The answers as of the last keystroke, for the timer and unmount paths. */
+  const optionsRef = useRef(options);
+  /** The answer set the server has, as far as this editor knows. */
+  const sentRef = useRef(answerSetKey(question.options));
+  const setOptions = (next: DraftOption[]) => {
+    optionsRef.current = next;
+    setOptionsState(next);
+  };
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Adopt the server's answers only when nothing typed is unsent. A save
+   * re-reads the question, and that re-read can land while the author is
+   * typing the next answer: adopting it then would put back the older text.
+   * When the server's set is the one we sent, the local labels are kept (no
+   * trimming "word " mid-sentence) along with each row's identity, so a new
+   * answer getting its real id does not remount the input under the cursor.
+   * An empty answer just added stays until it is filled in.
+   */
   useEffect(() => {
-    setOptions(question.options.map((o) => ({ ...o })));
+    const local = optionsRef.current;
+    if (answerSetKey(local) !== sentRef.current) return;
+    sentRef.current = answerSetKey(question.options);
+    const kept = local.filter((o) => !isPlaceholder(o));
+    const same = answerSetKey(kept) === sentRef.current && kept.length === question.options.length;
+    const rows = question.options.map((o, i) => ({
+      ...o,
+      label: same ? kept[i].label : o.label,
+      rowId: kept[i]?.rowId ?? (o.id || nextRowId()),
+    }));
+    setOptions([...rows, ...local.filter(isPlaceholder)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question.options]);
 
   const kind = questionKind(question, t("trueLabel"), t("falseLabel"));
@@ -540,14 +640,33 @@ export function QuestionEditor({
       try {
         await replaceQuizOptions(
           question.id,
-          next.map((o) => ({ label: o.label, isCorrect: o.isCorrect })),
+          // Trimmed: answers now save mid-word, so "Additive " must not be
+          // stored with the space the author was about to type after.
+          next.map((o) => ({ label: o.label.trim(), isCorrect: o.isCorrect })),
         );
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : t("saveFailed"));
-        setOptions(question.options.map((o) => ({ ...o })));
+        sentRef.current = answerSetKey(question.options);
+        setOptions(withRowIds(question.options, optionsRef.current));
       }
     });
+  const saveOptionsRef = useRef(saveOptions);
+  saveOptionsRef.current = saveOptions;
+
+  /*
+   * Answers save while typed, like every other quiz field (useSaveWhileTyping):
+   * typing schedules, leaving an answer or closing the dialog flushes. Picking
+   * the right answer and removing one flush at once, through the same queue,
+   * so they cannot overtake a label save still in flight.
+   */
+  const { schedule, flush } = useSaveWhileTyping(() => {
+    const toSend = optionsRef.current.filter((o) => !isPlaceholder(o));
+    const key = answerSetKey(toSend);
+    if (key === sentRef.current) return null;
+    sentRef.current = key;
+    return () => saveOptionsRef.current(toSend);
+  });
 
   return (
     <>
@@ -561,7 +680,7 @@ export function QuestionEditor({
             className="text-[13.5px] font-medium leading-relaxed"
             onCommit={(prompt) => {
               if (!prompt) return;
-              void run(async () => {
+              return run(async () => {
                 await updateQuizQuestion(question.id, { prompt });
                 await refresh();
               });
@@ -571,7 +690,7 @@ export function QuestionEditor({
 
         <StepLabel>{fixedAnswers ? t("answersLabelFixed") : t("answersLabel")}</StepLabel>
         {options.map((option, i) => (
-          <div key={option.id || `new-${i}`} className="flex items-center gap-2.5">
+          <div key={option.rowId} className="flex items-center gap-2.5">
             {/*
               * The radio keeps a deliberately oversized padded label around a
               * 17px control: the dot itself is well under any touch-target
@@ -584,9 +703,8 @@ export function QuestionEditor({
                 name={`correct-${question.id}`}
                 checked={option.isCorrect}
                 onChange={() => {
-                  const next = options.map((o, j) => ({ ...o, isCorrect: j === i }));
-                  setOptions(next);
-                  void saveOptions(next);
+                  setOptions(optionsRef.current.map((o, j) => ({ ...o, isCorrect: j === i })));
+                  flush();
                 }}
                 aria-label={t("markCorrect")}
                 className="h-[17px] w-[17px] cursor-pointer"
@@ -599,13 +717,12 @@ export function QuestionEditor({
               placeholder={t("answerPlaceholder")}
               readOnly={fixedAnswers}
               onChange={(e) => {
-                const next = options.slice();
+                const next = optionsRef.current.slice();
                 next[i] = { ...next[i], label: e.target.value };
                 setOptions(next);
+                schedule();
               }}
-              onBlur={() => {
-                if (option.label !== question.options[i]?.label) void saveOptions(options);
-              }}
+              onBlur={flush}
               className="min-w-0 flex-1 rounded-[var(--button-radius,0.75rem)] border-none bg-zinc-50 px-3.5 py-2.5 text-[13px] outline-none read-only:opacity-70"
               style={{ color: "var(--text-color)" }}
             />
@@ -615,9 +732,8 @@ export function QuestionEditor({
                 aria-label={t("removeAnswer")}
                 disabled={busy}
                 onClick={() => {
-                  const next = options.filter((_, j) => j !== i);
-                  setOptions(next);
-                  void saveOptions(next);
+                  setOptions(optionsRef.current.filter((_, j) => j !== i));
+                  flush();
                 }}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--button-radius,0.5rem)] border-none bg-transparent text-zinc-300 cursor-pointer transition-colors hover:text-zinc-500 disabled:opacity-40"
               >
@@ -632,7 +748,10 @@ export function QuestionEditor({
             type="button"
             disabled={busy}
             onClick={() =>
-              setOptions([...options, { id: "", label: "", isCorrect: false, order: options.length }])
+              setOptions([
+                ...optionsRef.current,
+                { id: "", label: "", isCorrect: false, order: optionsRef.current.length, rowId: nextRowId() },
+              ])
             }
             className="inline-flex items-center gap-1.5 self-start rounded-[var(--button-radius,0.5rem)] border-none bg-transparent px-1 py-1.5 text-[12.5px] font-semibold cursor-pointer transition-opacity hover:opacity-70 disabled:opacity-40"
             style={{ color: "var(--text-color)" }}
@@ -650,7 +769,7 @@ export function QuestionEditor({
             multiline
             className="text-[12.5px] leading-relaxed"
             onCommit={(feedback) => {
-              void run(async () => {
+              return run(async () => {
                 await updateQuizQuestion(question.id, { feedback: feedback || null });
                 await refresh();
               });
@@ -813,7 +932,7 @@ export function QuizMarkingEditor({
             placeholder={t("instructionsPlaceholder")}
             multiline
             className="text-[12.5px] leading-relaxed"
-            onCommit={(next) => void patch({ instructions: next || null })}
+            onCommit={(next) => patch({ instructions: next || null })}
           />
         </div>
       </div>
